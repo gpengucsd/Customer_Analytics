@@ -1,0 +1,275 @@
+---
+title: "Pentathlon II"
+output: html_document
+---
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Create an Rmarkdown document in which you calculate the CLV for each of the plans over an 8 week periods. The relevant data is in `data/pentathlon-II.xls` Also, use the average subscription churn and revenue numbers provided in `data/pentathlon-II-avg.csv` to simulate the effect of the different email frequencies over a 104 week period and generate a line plot to compare the five CLV curves. Are your results consistent with your answer to question 3 in the pentathlon-II.pdf file on Dropbox? Why (or why not)?
+
+## Hints
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>. Go to http://commonmark.org/help/ for a 10-minute interactive Markdown tutorial
+
+## Analysis
+
+Load both the `data/pentathlon-II.xls` and `data/pentathlon-II-avg.csv` for use in your analysis. Note that you still have to calculate the weekly discount rate based on the annual discount rate mentioned below.
+
+The variables in `data/pentathlon-II-avg.csv` are:
+
+* `schurn` is the average subscription churn over the 8 weeks of the test
+* `rev_sub` is the average revenue from subscribers
+* `rev_unsub` is the average revenue from non-subscribers
+
+A few assumptions to start with:
+
+```
+weeks <- 1:104
+discount <- .1 ## annual discount rate
+cogs <- .6
+```
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)
+data <- read.csv('data/pentathlon-II-avg.csv')
+data1 <- readxl::read_xls('data/pentathlon-II.xls',col_names = FALSE)
+data1 <-na.omit(data1)
+cost_of_good <- 0.6
+churn<- t(data1[c(2,6,10,14,18),])
+get_tibble <- function(select_data){
+
+a<- data.frame(select_data)
+email1=a$X1[2:length(a$X1)]
+email1 <- as.numeric(as.character(email1))
+residual_rate_email1 <- 1-email1
+for (i in 2: length(residual_rate_email1)){
+  residual_rate_email1[i]  = residual_rate_email1[i]*residual_rate_email1[i - 1]
+}
+churn1 <-c(1,residual_rate_email1)
+email2=a$X2[2:length(a$X2)]
+email2 <- as.numeric(as.character(email2))
+residual_rate_email2 <- 1-email2
+for (i in 2: length(residual_rate_email2)){
+  residual_rate_email2[i]  = residual_rate_email2[i]*residual_rate_email2[i - 1]
+}
+churn2 <-c(1,residual_rate_email2)
+email3=a$X3[2:length(a$X3)]
+email3 <- as.numeric(as.character(email3))
+residual_rate_email3 <- 1-email3
+for (i in 2: length(residual_rate_email3)){
+  residual_rate_email3[i]  = residual_rate_email3[i]*residual_rate_email3[i - 1]
+}
+churn3 <-c(1,residual_rate_email3)
+email4=a$X4[2:length(a$X4)]
+email4 <- as.numeric(as.character(email4))
+residual_rate_email4 <- 1-email4
+for (i in 2: length(residual_rate_email4)){
+  residual_rate_email4[i]  = residual_rate_email4[i]*residual_rate_email4[i - 1]
+}
+churn4 <-c(1,residual_rate_email4)
+email5=a$X5[2:length(a$X5)]
+email5 <- as.numeric(as.character(email5))
+residual_rate_email5 <- 1-email5
+for (i in 2: length(residual_rate_email5)){
+  residual_rate_email5[i]  = residual_rate_email5[i]*residual_rate_email5[i - 1]
+}
+churn5 <-c(1,residual_rate_email5)
+table_get <- tibble::tibble(
+  chunr1 = churn1,
+  chunr2 = churn2,
+  chunr3 = churn3,
+  chunr4 = churn4,
+  chunr5 = churn5
+)
+return(table_get)
+}
+churn_get<- get_tibble(churn)
+churn_get <-head(churn_get,8)
+#######################
+
+
+get_tibble2 <- function(select_data){
+
+  a<- data.frame(select_data)
+  email1=a$X1[2:length(a$X1)]
+  email1 <- as.numeric(as.character(email1))
+  email2=a$X2[2:length(a$X2)]
+  email2 <- as.numeric(as.character(email2))
+  email3=a$X3[2:length(a$X3)]
+  email3 <- as.numeric(as.character(email3))
+  email4=a$X4[2:length(a$X4)]
+  email4 <- as.numeric(as.character(email4))
+  email5=a$X5[2:length(a$X5)]
+  email5 <- as.numeric(as.character(email5))
+  table_get2 <- tibble::tibble(
+    email1 = email1,
+    email2 = email2,
+    email3 = email3,
+    email4 = email4,
+    email5 = email5,
+  )
+  return(table_get2)
+}
+
+
+subscribed_revenue <- t(data1[c(3,7,11,15,19),])
+subscribed_get <- get_tibble2(subscribed_revenue)
+unsubscribed_revenue <- t(data1[c(4,8,12,16,20),])
+unsubscribed_get <- get_tibble2(unsubscribed_revenue)
+
+
+
+
+
+
+profit <- subscribed_get*churn_get*(1-cost_of_good)+unsubscribed_get*(1-churn_get)*(1-cost_of_good)
+get_clv<-function(profit,number_week){
+weekly_discount_rate <- 1.1^(1/52)-1
+cost_of_good <-0.6
+week <- 1:number_week
+emailpv <- profit / (1 + weekly_discount_rate)^(week-0.5)
+CLV_auto_email <- cumsum(emailpv)
+AWS_auto_email <- tibble::tibble(week, CLV_auto_email)
+return(AWS_auto_email)}
+clv_email1 <- get_clv(profit$email1,8)
+clv_email2 <- get_clv(profit$email2,8)
+clv_email3 <- get_clv(profit$email3,8)
+clv_email4 <- get_clv(profit$email4,8)
+clv_email5 <- get_clv(profit$email5,8)
+print(clv_email1)
+print(clv_email2)
+print(clv_email3)
+print(clv_email4)
+print(clv_email5)
+```
+Question 1,Week8 CLV from email1 to 5 is 0.911,1.066,1.076,1.027,0.995
+Question 2  they should adopt 3 email per week.Because in short term,week3 have relatively low churn level compare to week4 and 5 and it's clv is highest 1.076.
+
+
+Question3 My assumption is 3emails per week is the best choice if we consider a longer time horizon because we need to find a balance between subscriber's revenue and churn rates.When it is a long term, we can notice that the churn rate will go to almost a stable number,and the two revenue will go to same number too.Based on the data ,1 email 4 email and 5 email will be picked out at first because 1 email has a very low subscriber revenue and 4 and 5 email has a very high churn rate but not a very significant increase in revenue.And we compare email 2 and email 3,2 looks better than 3 because 2 have a lower churn rate but they alomst have the same revenue level. 
+
+```{r}
+## insert CLV function below
+## determine what arguments the function needs to generate the required
+## return value
+clv <- function(rev_sub,rev_unsub,churn) {
+weeks <- 1:104
+discount <- .1 ## annual discount rate
+cogs <- .6
+week_discount<-(1+discount)^(1/52)-1
+revenue_week <-tibble::tibble(weeks, revenue_sub=rev_sub,revenue_unsub=rev_unsub,churn=1-churn )
+revenue_week$churn[1] =1
+for (i in 2: length(revenue_week$churn)){
+  revenue_week$churn[i]  = revenue_week$churn[i]*revenue_week$churn[i - 1]
+}
+revenue_week <- revenue_week %>%
+  mutate(total_revenue = (revenue_sub*churn+revenue_unsub*(1-churn))*(1-cogs)/ (1 + week_discount)^(weeks-0.5))%>%
+  mutate(sum_revenue = cumsum(total_revenue))
+return(revenue_week)
+}
+data <- read.csv('data/pentathlon-II-avg.csv')
+clv1 <-clv(data[1,3],data[1,4],data[1,2])
+clv2 <-clv(data[2,3],data[2,4],data[2,2])
+clv3 <-clv(data[3,3],data[3,4],data[3,2])
+clv4 <-clv(data[4,3],data[4,4],data[4,2])
+clv5 <-clv(data[5,3],data[5,4],data[5,2])
+tail(clv1)
+tail(clv2)
+tail(clv3)
+tail(clv4)
+tail(clv5)
+ 
+```
+
+Next, create a tibble with 6 columns. Five columns for the CLV series for each of the plans and one column for the `weeks` variable defined above. Call the `clv` function you created above to fill-in the columns.
+
+```{r}
+## create the tibble (data.frame)
+tibble1 <-tibble::tibble(weeks =1:104,email1 =clv1$sum_revenue,email2 =clv2$sum_revenue,email3 =clv3$sum_revenue,email4 =clv4$sum_revenue,email5 =clv5$sum_revenue)
+tibble1
+```
+So we can see 2 email is the best method and the 104 weeks clv is 10.45,the result is the same as my assumption.
+Next, generate three line plots that compare the CLV curves for each of the five plans. The first graphs should plot weeks 1 through 8. The second graph should plot weeks 1 through 52 and the final graph should show weeks 1 through 104.
+
+```{r}
+## generate graph 1
+graph1 <- radiant.data::visualize(
+  head(tibble1,8), 
+   xvar = "weeks", 
+   yvar = c("email1", "email2","email3","email4","email5"), 
+    comby = TRUE, 
+   type = "line", 
+   custom = FALSE)
+graph1
+```
+
+```{r}
+## generate graph 2
+graph2 <- radiant.data::visualize(
+  head(tibble1,52), 
+   xvar = "weeks", 
+   yvar = c("email1", "email2","email3","email4","email5"), 
+    comby = TRUE, 
+   type = "line", 
+   custom = FALSE)
+graph2
+```
+
+```{r}
+## generate graph 3
+graph3 <- radiant.data::visualize(
+  tibble1, 
+   xvar = "weeks", 
+   yvar = c("email1", "email2","email3","email4","email5"), 
+    comby = TRUE, 
+   type = "line", 
+   custom = FALSE)
+graph3
+```
+Quesiton 5 Limitation
+1.I suppose that the churn rate,revenue should not be a stable number.It is not so good to use the average number.I think churn rate will at first reduce and then become stable at a relatively low number(Customer attrition rate regardless of the number of emails sent per week,it means that those care about numbers of emails have already gone.) So to solve the problem ,I need to build a model when I have a medium period data.I am sure the churn rate will go down to a stable rate and I will use that rate to calculate.
+2.When calculate revenue,I think we need to consider a growth rate.So the business will enjoy a stable growth rate(considering the inflation and economic growth).We can use history data to assume that rate.
+
+
+ 
+
+Please generate a *reproducible* Notebook or HTML report with all your results and your answers to the questions listed in the pentathlon-II.pdf file on Dropbox.
+
+When you have finished editing this Rmarkdown document make sure to save, commit, and push it to GitLab. We will collect all the rmarkdown files from GitLab after the due date.

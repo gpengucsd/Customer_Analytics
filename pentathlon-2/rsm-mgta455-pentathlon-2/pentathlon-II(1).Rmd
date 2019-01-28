@@ -1,0 +1,323 @@
+---
+title: "Pentathlon II"
+output: html_document
+---
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Create an Rmarkdown document in which you calculate the CLV for each of the plans over an 8 week periods. The relevant data is in `data/pentathlon-II.xls` Also, use the average subscription churn and revenue numbers provided in `data/pentathlon-II-avg.csv` to simulate the effect of the different email frequencies over a 104 week period and generate a line plot to compare the five CLV curves. Are your results consistent with your answer to question 3 in the pentathlon-II.pdf file on Dropbox? Why (or why not)?
+
+## Hints
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>. Go to http://commonmark.org/help/ for a 10-minute interactive Markdown tutorial
+
+## Analysis
+
+Load both the `data/pentathlon-II.xls` and `data/pentathlon-II-avg.csv` for use in your analysis. Note that you still have to calculate the weekly discount rate based on the annual discount rate mentioned below.
+
+The variables in `data/pentathlon-II-avg.csv` are:
+
+* `schurn` is the average subscription churn over the 8 weeks of the test
+* `rev_sub` is the average revenue from subscribers
+* `rev_unsub` is the average revenue from non-subscribers
+
+A few assumptions to start with:
+```{r}
+weeks <- 1:104
+discount <- .1 ## annual discount rate
+w_discount <- (1+discount)^(1/52)-1 ## weekly discount rate
+cogs <- .6
+```
+
+Create a code chunk that contains a function that you can call to calculate the CLV for each of the 5 email plans.
+
+```{r}
+## load data
+library(readxl)
+library(readr)
+
+average <- read_csv("data/pentathlon-II-avg.csv")
+e1 <- read_excel("data/pentathlon-II.xls",range = "A1:I4")
+e2 <- read_excel("data/pentathlon-II.xls",range = "A6:I9")
+e3 <- read_excel("data/pentathlon-II.xls",range = "A11:I14")
+e4 <- read_excel("data/pentathlon-II.xls",range = "A16:I19")
+e5 <- read_excel("data/pentathlon-II.xls",range = "A21:I24")
+
+## insert CLV function below
+## determine what arguments the function needs to generate the required
+## return value
+clv <- function(num_email) {
+  if(num_email == 1){
+    sub_rev <- e1[2,2:9]
+    unsub_rev <- e1[3,2:9]
+    cost <- sub_rev*cogs
+    profit <- sub_rev - cost
+    churn <- e1[1,2:9]
+    pr_sub <- c(1)
+    for(i in 2:8){
+      pr_sub[i] <- pr_sub[i-1]*(1-churn[i-1])
+    }
+    pr_sub <- unlist(pr_sub)
+    pr_unsub <- 1-pr_sub
+    cv <- pr_sub*profit + pr_unsub*unsub_rev*(1-cogs)
+    dr <- c()
+    for(i in 1:8){
+      dr[i] <- 1/(1+w_discount)^(i)
+    }
+    result <- cv*dr
+  }
+  else if(num_email == 2){
+    sub_rev <- e2[2,2:9]
+    unsub_rev <- e2[3,2:9]
+    cost <- sub_rev*cogs
+    profit <- sub_rev - cost
+    churn <- e2[1,2:9]
+    pr_sub <- c(1)
+    for(i in 2:8){
+      pr_sub[i] <- pr_sub[i-1]*(1-churn[i-1])
+    }
+    pr_sub <- unlist(pr_sub)
+    pr_unsub <- 1-pr_sub
+    cv <- pr_sub*profit + pr_unsub*unsub_rev*(1-cogs)
+    dr <- c()
+    for(i in 1:8){
+      dr[i] <- 1/(1+w_discount)^(i)
+    }
+    result <- cv*dr
+  }
+  else if(num_email == 3){
+    sub_rev <- e3[2,2:9]
+    unsub_rev <- e3[3,2:9]
+    cost <- sub_rev*cogs
+    profit <- sub_rev - cost
+    churn <- e3[1,2:9]
+    pr_sub <- c(1)
+    for(i in 2:8){
+      pr_sub[i] <- pr_sub[i-1]*(1-churn[i-1])
+    }
+    pr_sub <- unlist(pr_sub)
+    pr_unsub <- 1-pr_sub
+    cv <- pr_sub*profit + pr_unsub*unsub_rev*(1-cogs)
+    dr <- c()
+    for(i in 1:8){
+      dr[i] <- 1/(1+w_discount)^(i)
+    }
+    result <- cv*dr
+  }
+  else if(num_email == 4){
+    sub_rev <- e4[2,2:9]
+    unsub_rev <- e4[3,2:9]
+    cost <- sub_rev*cogs
+    profit <- sub_rev - cost
+    churn <- e4[1,2:9]
+    pr_sub <- c(1)
+    for(i in 2:8){
+      pr_sub[i] <- pr_sub[i-1]*(1-churn[i-1])
+    }
+    pr_sub <- unlist(pr_sub)
+    pr_unsub <- 1-pr_sub
+    cv <- pr_sub*profit + pr_unsub*unsub_rev*(1-cogs)
+    dr <- c()
+    for(i in 1:8){
+      dr[i] <- 1/(1+w_discount)^(i)
+    }
+    result <- cv*dr
+  }
+  else if(num_email == 5){
+    sub_rev <- e5[2,2:9]
+    unsub_rev <- e5[3,2:9]
+    cost <- sub_rev*cogs
+    profit <- sub_rev - cost
+    churn <- e5[1,2:9]
+    pr_sub <- c(1)
+    for(i in 2:8){
+      pr_sub[i] <- pr_sub[i-1]*(1-churn[i-1])
+    }
+    pr_sub <- unlist(pr_sub)
+    pr_unsub <- 1 - pr_sub
+    cv <- pr_sub*profit + pr_unsub*unsub_rev*(1-cogs)
+    dr <- c()
+    for(i in 1:8){
+      dr[i] <- 1/(1+w_discount)^(i)
+    }
+    result <- cv*dr
+  }
+  return(result)
+}
+```
+
+Next, create a tibble with 6 columns. Five columns for the CLV series for each of the plans and one column for the `weeks` variable defined above. Call the `clv` function you created above to fill-in the columns.
+
+```{r}
+## create the tibble (data.frame)
+weeks_8 <- tibble::tibble(weeks = 1:8,One = as.numeric(clv(1)),Two = as.numeric(clv(2)), Three = as.numeric(clv(3)),Four = as.numeric(clv(4)),Five = as.numeric(clv(5)))
+
+weeks_8
+```
+
+```{r}
+## calculate the 8-week clvs for the five plans
+clv_8w <- apply(weeks_8,2,sum)
+clv_8w
+```
+```{r}
+## define a function that calculates longer time period clv
+clv_long <- function(num_email,weeks){
+  sub_rev <- rep(average[num_email,3],weeks)
+  unsub_rev <- rep(average[num_email,4],weeks)
+  churn <- rep(average[num_email,2],weeks)
+  churn <- unlist(churn)
+  sub_rev <- unlist(sub_rev)
+  unsub_rev <- unlist(unsub_rev)
+  pr_sub <- c(1)
+  for(i in 2:weeks){
+    pr_sub[i] <- pr_sub[i-1]*(1-churn[i-1])
+  }
+  pr_sub <- unlist(pr_sub)
+  pr_unsub <- 1 - pr_sub
+  cv <- sub_rev*0.4*pr_sub + unsub_rev*0.4*pr_unsub
+  dr <- c()
+    for(i in 1:weeks){
+      dr[i] <- 1/(1+w_discount)^(i)
+    }
+  result <- cv*dr
+  return(result)
+}
+
+## create a tibble for 52-week clv
+weeks_52 <- tibble::tibble(weeks = 1:52,One = as.numeric(clv_long(1,52)),Two = as.numeric(clv_long(2,52)), Three = as.numeric(clv_long(3,52)),Four = as.numeric(clv_long(4,52)),Five = as.numeric(clv_long(5,52)))
+
+## create a tibble for 104-week clv
+weeks_104 <- tibble::tibble(weeks = 1:104,One = as.numeric(clv_long(1,104)),Two = as.numeric(clv_long(2,104)), Three = as.numeric(clv_long(3,104)),Four = as.numeric(clv_long(4,104)),Five = as.numeric(clv_long(5,104)))
+
+## calculate the 52-week clvs for the five plans
+clv_52w <- apply(weeks_52,2,sum)
+clv_52w
+
+## calculate the 104-week clvs for the five plans
+clv_104w <- apply(weeks_104,2,sum)
+clv_104w
+```
+
+Next, generate three line plots that compare the CLV curves for each of the five plans. The first graphs should plot weeks 1 through 8. The second graph should plot weeks 1 through 52 and the final graph should show weeks 1 through 104.
+
+```{r}
+## generate graph 1
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+## define a function that calculates the sum of clv series
+cal_clv <- function(num_email,num_week){
+  if(num_week <= 8){
+    result <- sum(weeks_8[1:num_week,num_email+1])
+  }
+  else{
+    result <- sum(clv_long(num_email,num_week))
+  }
+  return(result)
+}
+
+One <- c()
+Two <- c()
+Three <- c()
+Four <- c()
+Five <- c()
+
+for(i in 1:5){
+  if(i == 1){
+    for(j in 1:104){
+      One[j] <- cal_clv(i,j)
+    }
+  }
+  else if(i == 2){
+    for(j in 1:104){
+      Two[j] <- cal_clv(i,j)
+    }
+  }
+  else if(i == 3){
+    for(j in 1:104){
+      Three[j] <- cal_clv(i,j)
+    }
+  }
+  else if(i == 4){
+    for(j in 1:104){
+      Four[j] <- cal_clv(i,j)
+    }
+  }
+  else if(i == 5){
+    for(j in 1:104){
+      Five[j] <- cal_clv(i,j)
+    }
+  }
+}
+
+plot.df <- tibble::tibble(weeks = 1:104,One,Two,Three,Four,Five)
+
+plot_8w <- plot.df %>%
+  filter(weeks <= 8) %>%
+  gather(Number, CLV, -weeks) %>%
+  mutate(Number = factor(Number,levels = c("One","Two","Three","Four","Five")))
+
+ggplot(plot_8w,aes(x=weeks,y=CLV,color=Number))+geom_line()
+```
+
+```{r}
+## generate graph 2
+plot_52w <- plot.df %>%
+  filter(weeks <= 52) %>%
+  gather(Number, CLV, -weeks) %>%
+  mutate(Number = factor(Number,levels = c("One","Two","Three","Four","Five")))
+
+ggplot(plot_52w,aes(x=weeks,y=CLV,color=Number))+geom_line()
+```
+
+```{r}
+## generate graph 3
+plot_104w <- plot.df %>%
+  filter(weeks <= 104) %>%
+  gather(Number, CLV, -weeks) %>%
+  mutate(Number = factor(Number,levels = c("One","Two","Three","Four","Five")))
+
+ggplot(plot_104w,aes(x=weeks,y=CLV,color=Number))+geom_line()
+```
+
+Please generate a *reproducible* Notebook or HTML report with all your results and your answers to the questions listed in the pentathlon-II.pdf file on Dropbox.
+
+When you have finished editing this Rmarkdown document make sure to save, commit, and push it to GitLab. We will collect all the rmarkdown files from GitLab after the due date.
