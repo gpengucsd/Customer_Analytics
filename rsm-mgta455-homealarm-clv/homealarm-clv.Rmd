@@ -1,0 +1,132 @@
+---
+title: "Home Alarm CLV"
+output: html_document
+name: Gaofeng Peng
+---
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+Prepare "Home Alarm, Inc.: Assessing Customer Lifetime Value" for class discussion and as an individual assignment and submit the assignment through GitLab. Be VERY clear about where results are coming from and what assumptions you are making in your R code. It is in your best interest that we do not have to struggle to figure out where your numbers came from. The assignment (pdf) is in the class Dropbox folder (week2/homealarm-ltv.pdf). Example R and Excel calculations are also on Dropbox (week1/readings).
+
+## Setup
+
+Create an rmarkdown document in which you calculate the CLV for a customers who uses auto-pay and for a customer that does not use auto-pay and answer question 1 through 4 in the assignment PDF.
+
+## Hints
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>. Go to http://commonmark.org/help/ for a 10-minute interactive Markdown tutorial
+
+When you click the **Knit** button in Rstudio, a document will be generated that includes both the text you type as well as the output of any embedded R-code chunks within the document.
+
+## Analysis
+
+The code chunk below sets the attrition notifications you should use in your analysis. 
+
+```{r}
+## Attrition notifications 
+churn <- tibble::tibble(
+  no_autopay = c(0,0.122, 0.162, 0.154, 0.134, 0.120,	0.111, 0.096),
+  autopay =  c(0, 0.070, 0.097, 0.103, 0.095, 0.078, 0.069, 0.059),
+  new_method =c(0,0, 0.097, 0.103, 0.095, 0.078, 0.069, 0.059)
+)
+residual_rate <- 1-churn
+for (i in 2: length(residual_rate$autopay)){
+  residual_rate$autopay[i]  = residual_rate$autopay[i]*residual_rate$autopay[i - 1]
+}
+for (i in 2: length(residual_rate$no_autopay)){
+  residual_rate$no_autopay[i]  = residual_rate$no_autopay[i]*residual_rate$no_autopay[i - 1]
+}
+for (i in 2: length(residual_rate$new_method)){
+  residual_rate$new_method[i]  = residual_rate$new_method[i]*residual_rate$new_method[i - 1]
+}
+
+annual_growth <- 0.03
+annual_discount_rate <- 0.1
+cost_service <- 0.15
+marketing_cost <- 0.05
+nr_years <- 8
+
+time <- 1:nr_years
+growth <- rep((1 + annual_growth)^(0:(nr_years-1)), each = 1)
+revenues <- rep(480*(1+annual_growth), nr_years) * growth
+service <- cost_service * revenues 
+marketing <- marketing_cost * revenues
+profit <- revenues - service - marketing
+
+active_auto <- residual_rate$autopay
+exp_profit_auto <- active_auto * profit
+#because the fee is paid monthly,so when discount ,using time -0.5
+PV_exp_profit_auto <- exp_profit_auto / (1 + annual_discount_rate)^(time-0.5)
+CLV_auto <- cumsum(PV_exp_profit_auto)
+AWS_auto <- tibble::tibble(time, CLV_auto)
+radiant.data::visualize(AWS_auto, xvar = "time", yvar = "CLV_auto", type = "line", custom = TRUE)
+print(AWS_auto)
+
+active_nonauto <- residual_rate$no_autopay
+exp_profit_nonauto <- active_nonauto * profit
+PV_exp_profit_nonauto <- exp_profit_nonauto / (1 + annual_discount_rate)^(time-0.5)
+CLV_nonauto <- cumsum(PV_exp_profit_nonauto)
+AWS_nonauto <- tibble::tibble(time, CLV_nonauto)
+radiant.data::visualize(AWS_nonauto, xvar = "time", yvar = "CLV_nonauto", type = "line", custom = TRUE)
+print(AWS_nonauto)
+
+active_new_method <- residual_rate$new_method
+exp_profit_new_method <- active_new_method * profit
+PV_exp_profit_new_method <- exp_profit_new_method / (1 + annual_discount_rate)^(time-0.5)
+CLV_new_method <- cumsum(PV_exp_profit_new_method)
+AWS_new_method <- tibble::tibble(time, CLV_new_method)
+print(AWS_new_method)
+
+
+```
+So for nonauto,CLV is 1606.09(Question 2 ) and for auto,CLV is 1864.46(Question1)
+For question 3,the maximum amount Home Alarm should spend on incentives to convert an
+existing customer to auto-pay is 1864.46-1606.09 = 258.37
+
+For question 4,I have three actions which individually make sense. 
+Alternative marketing action 1 :For any customer make the decision to change to auto-pay this year,we give him a 200 dollars fees reduce in this year and the fees goes as usual after second year and the fees for the third year are based on fees which is not deducted in the second year
+(As part of the validation ,a 200 dollars reduce come to a clv 1864.46- 200 =1664.46 in the final,consider the 200 reduce as marketing cost,only for second year)  
+
+Action 2 :For any customer make the decision to change to auto-pay this year,we give him a half year fee free period(Actually reduce fees 247 dollars) in the future contact period.It means that customers can have any six months of the contract without payment.(As part of the validation ,the minimum clv is 1976-272=1704 >1606)  
+
+Action 3 :For any customer decide to change to auto-pay this year and remain in the alarm service system,customer can choose one of the last five year(5-9 year) in the contact in the future to enjoy one year free service.(It means that if the customer want to use the free service ,in the second third,fourth and fifth year he will still pay for the service .For validation,suppose the customer use the free service in fifth year ,after changing the churn rate ,final clv is bigger than 1606)
+
+
+finish
+ 
+
+Please generate an HTML (Notebook) with your answers to all the questions listed in the homealarm-clv.pdf file on Dropbox. When you have finished editing the Rmarkdown document and generated the HTML report make sure to save, commit, and push it to GitLab. We will collect all the rmarkdown files from GitLab after the due date.
