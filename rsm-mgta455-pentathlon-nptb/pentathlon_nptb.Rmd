@@ -1,0 +1,206 @@
+---
+title: "Pentathlon III: Next Product to Buy Modeling"
+output: html_document
+---
+
+* Team-lead gitlab id:
+* Team-lead gitlab username:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if neededi
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this Rmarkdown document by answering the questions in `pentathlon-nptb.pdf` on Dropbox (week8/readings/). The code block below will load the data you need. Please DO NOT change the code used to load the data. Create an HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when you are done. As always, all results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the R-markdown file without changes or errors).
+
+Good luck!
+
+```{r}
+## Loading the data from Dropbox/MGTA455-2019/data/
+pentathlon_nptb <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/pentathlon_nptb.rds"))
+```
+
+```{r}
+library(tidyverse)
+library(radiant)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(nnet)
+library(stringr)
+
+
+train <- pentathlon_nptb %>%
+  filter(training== 1)
+validation <- pentathlon_nptb %>%
+  filter(training == 0 )
+test <- pentathlon_nptb %>%
+  filter( is.na(training))
+
+
+
+result <- nn(
+  train, 
+  rvar = "buyer", 
+  evar = c( "message" , "age"  ,     "gender"  ,  "income" , "education" ,"children" ,    "freq_endurance", "freq_strength" , "freq_water" , "freq_team", "freq_backcountry"
+,"freq_winter"  , "freq_racquet"), 
+  lev = 'yes',
+  size = ,
+  decay = ,
+  seed = 1234
+)
+
+
+
+vals <- cv.nn(result, size = 1:4, decay = seq(0, 0.5, 0.05))
+head(vals)
+
+```
+
+## Question answers
+```{r}
+result <- nn(
+  train, 
+  rvar = "buyer", 
+  evar = c( "message" , "age"  ,     "gender"  ,  "income" , "education" ,"children" , "freq_endurance", "freq_strength" , "freq_water" , "freq_team", "freq_backcountry","freq_winter"  , "freq_racquet"), 
+  lev = 'yes',
+  size = 4,
+  decay = 0.15 ,
+  seed = 1234
+)
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'endurance'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_endurance")%>%
+  mutate(p_endurance = p_endurance / (p_endurance + (1 - p_endurance) * (1 - 0.01) / 0.01))
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'strength'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_strength")%>%
+  mutate(p_strength = p_strength / (p_strength + (1 - p_strength) * (1 - 0.01) / 0.01))
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'water'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_water")%>%
+  mutate(p_water = p_water / (p_water + (1 - p_water) * (1 - 0.01) / 0.01))
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'team'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_team")%>%
+  mutate(p_team = p_team / (p_team + (1 - p_team) * (1 - 0.01) / 0.01))
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'backcountry'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_backcountry")%>%
+  mutate(p_backcountry = p_backcountry / (p_backcountry + (1 -p_backcountry) * (1 - 0.01) / 0.01))
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'winter'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_winter")%>%
+  mutate(p_winter = p_winter / (p_winter + (1 -p_winter) * (1 - 0.01) / 0.01))
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'racquet'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_racquet")%>%
+  mutate(p_racquet = p_racquet / (p_racquet + (1 -p_racquet) * (1 - 0.01) / 0.01))
+```
+```{r}
+pentathlon_nptb <- mutate(
+pentathlon_nptb,
+to_offeri = c("endurance", "strength", "water","team","backcountry","winter","racquet")[which.pmax(p_endurance, p_strength, p_water,p_team,p_backcountry,p_winter,p_racquet)],
+p_targeti = pmax(p_endurance, p_strength, p_water,p_team,p_backcountry,p_winter,p_racquet)
+)
+representative_result <- pentathlon_nptb %>%
+  filter(representative == 1)
+representative_percentage <- pentathlon_nptb %>%
+  filter(representative == 1)%>%
+  group_by(to_offeri) %>%
+  summarise( n = n())%>%
+  mutate( n = n/100000)
+```
+
+```{r}
+train_new <- train %>%
+  filter(total_os != 0)
+result_3 <- nn(
+  train_new, 
+  rvar = "total_os", 
+  evar = c( "message" , "age"  , "gender"  ,  "income" , "education" ,"children" ,    "freq_endurance", "freq_strength" , "freq_water" , "freq_team", "freq_backcountry","freq_winter"  , "freq_racquet"), 
+  size = 4,
+  decay = 0.15 ,
+  seed = 1235,
+  type = "regression"
+)
+```
+
+```{r}
+mse_val_lm <- predict(result_3, pred_data = pentathlon_nptb)
+
+pentathlon_nptb$mse_val <- mse_val_lm$Prediction
+
+pentathlon_nptb_new <- pentathlon_nptb %>% filter(training == 0) %>% mutate(mse = (mse_val - total_os) ^ 2)
+mean(pentathlon_nptb_new$mse)
+```
+
+
+
+```{r}
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'endurance'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_endurance")
+
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'strength'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_strength")
+
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'water'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_water")
+
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'team'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_team")
+
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'backcountry'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_backcountry")
+
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'winter'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_winter")
+
+pred <- predict(result_3, pred_data = pentathlon_nptb, pred_cmd = "message = 'racquet'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "profit_racquet")
+
+pentathlon_nptb <- mutate(
+pentathlon_nptb,
+to_offeri = c("endurance", "strength", "water","team","backcountry","winter","racquet")[which.pmax(profit_endurance, profit_strength, profit_water,profit_team,profit_backcountry,profit_winter,profit_racquet)],
+profit_targeti = pmax(profit_endurance, profit_strength, profit_water,profit_team,profit_backcountry,profit_winter,profit_racquet)
+)
+```
+

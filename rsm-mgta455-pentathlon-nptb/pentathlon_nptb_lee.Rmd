@@ -1,0 +1,248 @@
+---
+title: "Pentathlon III: Next Product to Buy Modeling"
+output: html_document
+---
+
+* Team-lead gitlab id:
+* Team-lead gitlab username:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if neededi
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this Rmarkdown document by answering the questions in `pentathlon-nptb.pdf` on Dropbox (week8/readings/). The code block below will load the data you need. Please DO NOT change the code used to load the data. Create an HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when you are done. As always, all results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the R-markdown file without changes or errors).
+
+Good luck!
+
+```{r}
+## Loading the data from Dropbox/MGTA455-2019/data/
+pentathlon_nptb <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/pentathlon_nptb.rds"))
+```
+
+## Question answers
+```{r}
+library(caret)
+library(radiant)
+```
+
+```{r}
+## set parameters
+rvar <- "buyer"
+evar <- c("total_os", "message", "age", "gender", "income","education","children")
+int <- c(
+ "total_os:message", "message:age", "message:gender", "message:income", "message:education", "message:children"
+)
+lev <- "yes"
+```
+
+
+
+
+```{r}
+## train logistic model
+result <- logistic(
+  pentathlon_nptb,  
+  rvar = rvar,  evar = evar,  lev = lev, int = int, 
+  data_filter = "training == 1"
+)
+summary(result)
+eval_dat$logit <- predict(result, pentathlon_nptb)$Prediction
+```
+
+```{r}
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'endurance'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_endurance")
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'strength'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_strength")
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'water'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_water")
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'team'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_team")
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'backcountry'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_backcountry")
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'winter'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_winter")
+
+pred <- predict(result, pred_data = pentathlon_nptb, pred_cmd = "message = 'racquet'")
+pentathlon_nptb <- store(pentathlon_nptb, pred, name = "p_racquet")
+```
+
+
+```{r}
+pentathlon_nptb <- mutate(
+pentathlon_nptb,
+to_offeri = c("endurance", "strength", "water","team","backcountry","winter","racquet")[which.pmax(p_endurance, p_strength, p_water,p_team,p_backcountry,p_winter,p_racquet)],
+p_targeti = pmax(p_endurance, p_strength, p_water,p_team,p_backcountry,p_winter,p_racquet)
+)
+```
+
+
+
+```{r}
+result <- pivotr(
+pentathlon_nptb,
+cvars = "to_offeri",
+tabsort = "desc(n_obs)"
+)
+summary(result)
+```
+
+```{r}
+result <- explore(
+pentathlon_nptb,
+vars = c("p_endurance", "p_strength", "p_water","p_team","p_backcountry","p_winter","p_racquet", "p_targeti"),
+fun = "mean",
+tabsort = "desc(mean)"
+)
+summary(result)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+rvar <- "buyer"
+evar <- pentathlon_nptb %>% select(total_os, message, age, gender, income,education,children)
+```
+
+
+```{r}
+## Create evaldat
+eval_dat <- tibble::tibble(
+  buyer = pentathlon_nptb$buyer, 
+  training = pentathlon_nptb$training
+)
+```
+
+
+```{r}
+auc <- function(data, lev = NULL, model = NULL) {
+  c(auc = radiant.model::auc(data$yes, data$obs, "yes"))
+}
+
+## using caret with nnet
+## use the big grid ...
+# grid <- expand.grid(size = 1:6, decay = seq(0, 1, 0.05))
+## ... or the small grid as an example
+grid <- expand.grid(size = 3, decay = seq(0.05, 0.15, 0.05))
+
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = auc,
+  verboseIter = TRUE
+)
+```
+
+
+```{r}
+## this can take quite some time, especially with a big grid and model ...
+## comment out to avoid running is not needed
+set.seed(1234)
+result <- train(
+  evar,
+  pentathlon_nptb[[rvar]],
+  method = "nnet",
+  trControl = ctrl,
+  tuneGrid = grid,
+  metric = "auc",
+  rang = .1,
+  skip = FALSE,
+  linout = FALSE,
+  trace = FALSE,
+  maxit = 10000
+)
+
+```
+```{r}
+tuned <- result$bestTune
+```
+
+```{r}
+set.seed(1234)
+lev <- "yes"
+result <- nnet::nnet(
+  buyer == lev ~ .,
+  data = pentathlon_nptb,
+  size = tuned$size,
+  decay = tuned$decay,
+  rang = .1,
+  linout = FALSE,
+  entropy = TRUE,
+  skip = FALSE,
+  trace = FALSE,
+  maxit = 10000
+)
+```
+
+
+```{r}
+evalbin(
+  eval_dat,
+  pred = c("logit"),
+  rvar = rvar,
+  lev = lev,
+  qnt = 30,
+  train = "Test",
+  data_filter = "training == 1"
+) %>% plot(plots = "gains")
+```
+
+

@@ -1,0 +1,188 @@
+```{r}
+## Loading the data from Dropbox/MGTA455-2019/data/
+pentathlon_nptb <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/pentathlon_nptb.rds"))
+```
+
+### Question Answers
+### Question 1 
+```{r}
+## set parameters
+rvar <- "buyer"
+evar <- c("message", "age", "gender", "income","education","children","freq_endurance","freq_strength","freq_water","freq_team","freq_backcountry","freq_winter","freq_racquet")
+lev <- "yes"
+
+## nn size 1, decay = 0.5
+nn1_result = nn(pentathlon_nptb, rvar = rvar, evar = evar, lev = lev, size = 3, decay = 0.15, seed = 1234, 
+        data_filter='training==1')
+#summary(nn1_result)
+
+## CV nn
+#vals = cv.nn(nn1_result, size = 1:4, decay = seq(0,0.5,0.05) )
+#head(vals)
+## based on cross validation the best nn has 4 node in the hidden layer
+## and decay set to 0.15
+adjust_prob = function(p){
+  p_adj = p / (p + (1 - p) * (1 - 0.01) / 0.01)
+  return(p_adj)
+}
+
+
+nn4_result = nn(pentathlon_nptb, rvar = rvar, evar = evar, lev = lev, size = 4, 
+                decay = 0.15,
+                seed = 1234,
+                data_filter='training==1')
+```
+
+##### predict purch prob
+```{r}
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'endurance'")
+pentathlon_nptb$p_endurance =  sapply(pred$Prediction,adjust_prob)
+
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'strength'")
+pentathlon_nptb$p_strength =  sapply(pred$Prediction,adjust_prob)
+
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'water'")
+pentathlon_nptb$p_water =  sapply(pred$Prediction,adjust_prob)
+
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'team'")
+pentathlon_nptb$p_team =  sapply(pred$Prediction,adjust_prob)
+
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'backcountry'")
+pentathlon_nptb$p_backcountry =  sapply(pred$Prediction,adjust_prob)
+
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'winter'")
+pentathlon_nptb$p_winter =  sapply(pred$Prediction,adjust_prob)
+
+pred <- predict(nn4_result, pred_data = pentathlon_nptb, pred_cmd = "message = 'racquet'")
+pentathlon_nptb$p_racquet =  sapply(pred$Prediction,adjust_prob)
+```
+
+
+##### create max prob and best offer
+```{r}
+pentathlon_nptb <- mutate(
+pentathlon_nptb,
+to_offernn = c("endurance", "strength", "water","team","backcountry","winter","racquet")[which.pmax(p_endurance, p_strength, p_water,p_team,p_backcountry,p_winter,p_racquet)],
+p_targetnn = pmax(p_endurance, p_strength, p_water,p_team,p_backcountry,p_winter,p_racquet)
+)
+```
+
+
+### Question 2
+```{r}
+pentathlon_nptb%>%
+  filter(representative == 1)%>%
+  group_by(to_offernn)%>%
+  summarise(probability = n()/100000)%>%
+  arrange(desc(probability))
+```
+
+
+### Question 3
+```{r}
+pentathlon_nptb_1 = pentathlon_nptb%>%filter(total_os != 0)
+nn4_result_reg = nn(pentathlon_nptb_1, rvar = 'total_os', evar = evar,
+                    size = 4, 
+                    decay = 0.15,
+                    seed = 1234,
+                    type = 'regression',
+                    data_filter='training==1')
+
+```
+
+```{r}
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'endurance'")
+pentathlon_nptb$ep_endurance =  pred$Prediction*pentathlon_nptb$p_endurance*0.4
+
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'strength'")
+pentathlon_nptb$ep_strength =  pred$Prediction*pentathlon_nptb$p_strength*0.4
+
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'water'")
+pentathlon_nptb$ep_water =  pred$Prediction*pentathlon_nptb$p_water*0.4
+
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'team'")
+pentathlon_nptb$ep_team =  pred$Prediction*pentathlon_nptb$p_team*0.4
+
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'backcountry'")
+pentathlon_nptb$ep_backcountry =  pred$Prediction*pentathlon_nptb$p_backcountry*0.4
+
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'winter'")
+pentathlon_nptb$ep_winter =  pred$Prediction*pentathlon_nptb$p_winter*0.4
+
+pred <- predict(nn4_result_reg, pred_data = pentathlon_nptb, pred_cmd = "message = 'racquet'")
+pentathlon_nptb$ep_racquet =  pred$Prediction*pentathlon_nptb$p_racquet*0.4
+```
+
+##### create max ep and best offer
+```{r}
+pentathlon_nptb <- mutate(
+pentathlon_nptb,
+to_offernn_ep = c("endurance", "strength", "water","team","backcountry","winter","racquet")[which.pmax(ep_endurance, ep_strength, ep_water,ep_team,ep_backcountry,ep_winter,ep_racquet)],
+p_targetnn_ep = pmax(ep_endurance, ep_strength, ep_water,ep_team,ep_backcountry,ep_winter,ep_racquet)
+)
+```
+
+
+### Question 4
+```{r}
+pentathlon_nptb%>%
+  filter(representative == 1)%>%
+  group_by(to_offernn_ep)%>%
+  summarise(probability = n()/100000)%>%
+  arrange(desc(probability))
+```
+
+
+### Question 5 
+```{r}
+ideal_mean = pentathlon_nptb%>%
+  filter(representative == 1)%>%
+  summarise(mean= mean(p_targetnn_ep))
+ideal_mean 
+```
+
+
+### Question 6
+```{r}
+pentathlon_nptb%>%
+  filter(representative == 1)%>%
+  summarise(mean_endurance= mean(ep_endurance),
+            mean_strength= mean(ep_strength),
+            mean_water= mean(ep_water),
+            mean_team= mean(ep_team),
+            mean_backcountry= mean(ep_backcountry),
+            mean_winter= mean(ep_winter),
+            mean_racquet= mean(ep_racquet))
+```
+
+
+
+### Question 7
+```{r}
+set.seed(1234)
+for (i in 1: nrow(pentathlon_nptb)){
+  pentathlon_nptb[i,44]= pentathlon_nptb[i,sample(35:41, size = 1)]
+}
+pentathlon_nptb = pentathlon_nptb%>%rename(random_target = V44)
+random_mean = pentathlon_nptb%>%
+  filter(representative == 1)%>%
+  summarise(mean= mean(random_target))
+random_mean
+```
+
+
+
+### Question 8
+```{r}
+5000000*(ideal_mean-random_mean)
+```
+
+
+
+
+
+
+
+
+
+
