@@ -1,0 +1,292 @@
+---
+title: BBB - Logistic Regression
+output: html_document
+---
+
+* Name:
+* GitLab id: "rsm- "
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if neededi
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this Rmarkdown document by answering the questions in `bbb-logistic.pdf` on Dropbox (week5/readings/). Create an Notebook / HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when you are done. All results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the Rmarkdown file without changes or errors).
+
+> Note: If you use Rstudio's git tab to push your subimssion to GitLab you may see warnings or messages when pushing the HTML file because of its size. To avoid these messages you can also push your files to GitLab by using GitGadget's "Sync" tab (i.e., Commit your changes and then Push). 
+
+```{r}
+## loading the data. Note that data *must* be loaded from Dropbox/MGTA455-2019/data
+bbb_wrk <- readr::read_rds(file.path(find_dropbox(), "MGTA455-2019/data/bbb.rds"))
+result<- radiant.model::logistic(bbb_wrk,'buyer',c('gender', 'last', 'total', 'child', 'youth', 'cook', 'do_it', 'reference', 'art', 'geog'))
+prediction_bbb  <- result%>%
+  predict(pred_data = bbb_wrk)
+summary(result)
+```
+Odd ratio of art is 3.176 which is the strongest positive varible.Odd ration of do_it is 0.583  which is the strongest negative varible.Because 1/0.583<3.176, art is the most important variable.P value is all smaller than 0.001 so all the variable here is significant.
+```{r}
+library(dplyr)
+prediction_bbb<- prediction_bbb %>%
+  mutate(prob_dec = radiant.data::xtile(Prediction, 10,rev=TRUE)/10)%>%
+  mutate(acctnum = as.character(10000+as.numeric(rownames(prediction_bbb))))%>%
+  right_join(bbb_wrk[,c(1,19)],by = 'acctnum')%>%
+  mutate(buyer = factor(x= buyer ,level= c('yes','no'),label= c(1,0)))
+```
+```{r}
+plot <- prediction_bbb%>%
+  group_by(prob_dec)%>%
+  summarise(response_rate = mean(as.numeric(as.character(buyer))))%>%
+  ggplot(aes(x=prob_dec,y=response_rate))+geom_bar(stat='identity')
+plot
+```
+
+
+```{r}
+#part2 quetion3 
+report1 <- prediction_bbb %>%
+  group_by(prob_dec)%>%
+  summarise(response_rate = mean(as.numeric(as.character(buyer))),number_of_customer = n(),number_of_buyer = sum(as.numeric(as.character(buyer))))
+report1
+```
+```{r}
+result2<- radiant.model::logistic(bbb_wrk,'buyer',c('child'))
+summary(result2)
+
+```
+When we only use child as explanatory variable or of child is 1.077. Compared to the raw model, or is 0.830.That means child change from a negetive variable to a lightly positive variable.
+```{r}
+report1 <- report1 %>%
+  mutate(Lift = response_rate / (sum(number_of_buyer)/sum(number_of_customer)))%>%
+  mutate(cumulative_response_rate = cumsum(number_of_buyer)/cumsum(number_of_customer))%>%
+  mutate(Cum_Lift = cumulative_response_rate / (sum(number_of_buyer)/sum(number_of_customer)))
+report1
+```
+```{r}
+plot3 <- report1%>%
+  ggplot(aes(x=prob_dec,y=Cum_Lift))+geom_point()+geom_line()
+plot3
+```
+
+```{r}
+report2 <- report1 %>%
+  mutate(cum_buyer = cumsum(number_of_buyer))%>%
+  mutate(Gains = number_of_buyer /sum(number_of_buyer))%>%
+  mutate(Cum_gains = cum_buyer/sum(number_of_buyer))
+report2
+
+```
+```{r}
+reference<- data.frame(x= 1:10/10,y=1:10/10)
+plot4 <- report2%>%
+  ggplot(aes(x=prob_dec,y=Cum_gains))+geom_point()+geom_line()+geom_line(aes(x=reference$x,y=reference$y))
+plot4
+```
+```{r}
+#confusion matrix
+threshold <- 0.5
+confusion_matrix <- prediction_bbb %>%
+  mutate(Pred.buyer = as.numeric(Prediction > threshold)) %>%
+  count(buyer,Pred.buyer)
+confusion_matrix
+acc <- (confusion_matrix[2,3]+confusion_matrix[3,3])/sum(confusion_matrix$n)
+cat('Model Accuracy=', as.numeric(unname(acc)))
+```
+```{r}
+#Part5
+break_even_response_rate = 0.5/(18-9-3)
+prediction_bbb <- prediction_bbb %>%
+  mutate(mailto_logit = Prediction > break_even_response_rate)
+#question3
+question3<- prediction_bbb %>%
+  filter(mailto_logit ==TRUE)
+expected_customer<- nrow(question3)/nrow(prediction_bbb)*500000
+expected_buyer <-sum(as.numeric(as.character(question3$buyer)))/nrow(prediction_bbb)*500000
+expected_response_rate <-expected_buyer/expected_customer
+expected_customer
+expected_buyer
+expected_response_rate
+```
+when mailto_logit is TRUE,expected customers are 155600 and expected buyer is 33230.Response rate is 0.21356.
+Question4 ,expected profit is 33230*(18-9-3)-155600*0.5=121580
+ROME is 121580/155600*0.5=1.5627
+
+```{r}
+prediction_witherror  <- result%>%
+  predict(pred_data = bbb_wrk,conf_lev = 0.9, se = TRUE)
+bbb <- store(bbb_wrk, prediction_witherror, name = c("purch_prob", "purch_prob_lb", "purch_prob_ub"))%>%
+  mutate(buyer = factor(x= buyer ,level= c('yes','no'),label= c(1,0)))
+
+prediction_witherror <- bbb %>%
+  mutate(mailto_logit_lb =  purch_prob_lb> break_even_response_rate)%>%
+  mutate(mailto_logit_ub = purch_prob_ub > break_even_response_rate)
+#question3
+question3_1<- prediction_witherror %>%
+  filter(mailto_logit_lb ==TRUE)
+expected_customer_lb<- nrow(question3_1)/nrow(prediction_witherror)*500000
+expected_buyer_lb <-sum(as.numeric(as.character(question3_1$buyer)))/nrow(prediction_witherror)*500000
+expected_response_rate_lb <-expected_buyer_lb/expected_customer_lb
+cat('expected_customer_lb=',expected_customer_lb)
+cat('expected_buyer_lb=', expected_buyer_lb)
+cat('expected_response_rate_lb=', expected_response_rate_lb)
+expected_profit_lb <- expected_buyer_lb*6-expected_customer_lb*0.5
+ROME_lb <-expected_profit_lb/(expected_customer_lb*0.5)
+cat('expected_profit_lb=', expected_profit_lb)
+cat('ROME_LB=', ROME_lb)
+
+question3_1<- prediction_witherror %>%
+  filter(mailto_logit_ub ==TRUE)
+expected_customer_ub<- nrow(question3_1)/nrow(prediction_witherror)*500000
+expected_buyer_ub <-sum(as.numeric(as.character(question3_1$buyer)))/nrow(prediction_witherror)*500000
+expected_response_rate_ub <-expected_buyer_ub/expected_customer_ub
+cat('expected_customer_ub=',expected_customer_ub)
+cat('expected_buyer_ub=', expected_buyer_ub)
+cat('expected_response_rate_ub=', expected_response_rate_ub)
+expected_profit_ub <- expected_buyer_ub*6-expected_customer_ub*0.5
+ROME_ub <-expected_profit_ub/(expected_customer_ub*0.5)
+cat('expected_profit_ub=', expected_profit_ub)
+cat('ROME_ub=', ROME_ub)
+```
+ROME for lb is 1.686976 while ROME for ub is 1.456783 and ROME for normal is 1.5627.
+Which means that using low boundary is better.
+
+## Question answers
+```{r}
+#Part 6  navie bayes
+result_bayes <- nb(
+  bbb_wrk, 
+  rvar = "buyer", 
+  evar = c(
+    "gender", "last", "total", "child", "youth", "cook", "do_it", 
+    "reference", "art", "geog"
+  )
+)
+summary(result)
+pred_bayes <- predict(result_bayes, pred_data = bbb_wrk)
+print(pred_bayes, n = 10)
+bbb_bayes <- store(bbb_wrk, pred_bayes, name = c("yes", "no"))
+bbb_bayes <- bbb_bayes %>%
+  mutate(mailto_logit = yes > break_even_response_rate)%>%
+  mutate(buyer = factor(x= buyer ,level= c('yes','no'),label= c(1,0)))
+bayes<- bbb_bayes %>%
+  filter(mailto_logit ==TRUE)
+expected_customer_bayes<- nrow(bayes)/50000*500000
+expected_buyer_bayes <-sum(as.numeric(as.character(bayes$buyer)))/50000*500000
+expected_response_rate_bayes <-expected_buyer_bayes/expected_customer_bayes
+expected_customer_bayes
+expected_buyer_bayes
+expected_response_rate_bayes
+expected_profit_bayes <- expected_buyer_bayes*6-expected_customer_bayes*0.5
+ROME_bayes <-expected_profit_bayes/(expected_customer_bayes*0.5)
+expected_profit_bayes
+ROME_bayes
+<<<<<<< HEAD
+
+confusion_matrix_bayes <- bbb_bayes %>%
+  mutate(Pred.buyer = as.numeric(yes > threshold)) %>%
+  count(buyer,Pred.buyer)
+acc_bayes <- (confusion_matrix_bayes[2,3]+confusion_matrix_bayes[3,3])/sum(confusion_matrix_bayes$n)
+cat('Model Accuracy=', as.numeric(unname(acc_bayes)))
+```
+
+```{r}  
+#RFM 
+if (!exists("r_environment")) library(radiant)
+bbb_rfm <- bbb_wrk %>% 
+=======
+```
+
+```{r}
+#RFM
+if (!exists("r_environment")) library(radiant)
+bbb_rfm <- bbb_wrk %>%
+>>>>>>> 61d97dca09ddd426e79eb4e2bfca130e5d03db53
+  mutate(rec_iq = radiant.data::xtile(last, 5))%>%
+  group_by(rec_iq) %>%
+  mutate(freq_sq = radiant.data::xtile(purch, 5, rev = TRUE))%>%
+  ungroup()%>%
+  group_by(rec_iq, freq_sq)%>%
+  mutate(mon_sq = radiant.data::xtile(total,5,rev=TRUE))%>%
+  ungroup()%>%
+  mutate(rfm_sq = paste0(rec_iq, freq_sq, mon_sq))%>%
+  mutate(buyer = factor(x= buyer ,level= c('yes','no'),label= c(1,0)))%>%
+  mutate(buyer = as.numeric(as.character(buyer)))
+
+perf_calc <- function(data,column_name){
+  data <- data %>%
+  group_by_at(column_name)%>%
+  mutate(choose_test = mean(buyer)>break_even_response_rate)%>%
+  ungroup()
+  perc_choose <- mean(data$choose_test)
+  number_choose <- perc_choose *500000
+  dat <-filter(data,choose_test ==TRUE)
+  rep_rate<-mean(dat$buyer== 1)
+  nr_resp <-number_choose*rep_rate
+  cost1<-0.5*number_choose
+  profit1<-6*nr_resp-cost1
+  ROME1 <-profit1/cost1
+<<<<<<< HEAD
+  confusion_matrix <- data %>%
+  count(buyer,choose_test)
+  acc <- (confusion_matrix[2,3]+confusion_matrix[3,3])/sum(confusion_matrix$n)
+  return(c(cost1,profit1,ROME1,rep_rate,acc))
+=======
+  return(c(cost1,profit1,ROME1,rep_rate))
+>>>>>>> 61d97dca09ddd426e79eb4e2bfca130e5d03db53
+}
+sq<-perf_calc(bbb_rfm,'rfm_sq')
+sq
+```
+So the final result is Logistic Regression adjusted error is the best.
+1.Sequential RFM  profit is 80100,response rate 0.1396,ROME 0.6759
+<<<<<<< HEAD
+ 
+=======
+
+>>>>>>> 61d97dca09ddd426e79eb4e2bfca130e5d03db53
+2.Naive Bayes profit is 87310 ,response rate 0.205,ROME 1.465
+
+3.Logistic Regression normal profit is 121580,response rate is 0.2135,ROME1.56
+
+4.Logistic Regression error adjusted profit is 121825,response rate is 0.22391 and ROME is 1.686976
+
+The forth choice has a highest ROME ,highest response rate and highest profit.
+
+
+
+
