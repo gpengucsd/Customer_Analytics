@@ -1,0 +1,177 @@
+---
+title: "Logit"
+author: "Dean Sun"
+date: "2/11/2019"
+output: html_document
+---
+
+```{r echo=FALSE, include = FALSE}
+library(tidyverse)
+library(radiant)
+library(zipcode)
+```
+
+```{r echo=FALSE}
+cost = 1.41
+margin = 60
+Break_even = cost/margin
+data(zipcode)
+intuit75k <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/intuit75k.rds"))
+# change data type and add state 
+intuit75k = intuit75k%>%
+  left_join(zipcode, by = 'zip')%>%
+  select(-c(city,latitude,longitude))
+intuit75k[is.na(intuit75k)] = 0
+
+intuit75k <- mutate_at(intuit75k, .vars = vars(zip_bins, bizflag, version1, owntaxprod, upgraded,state),
+                       .funs = as.factor)
+
+# Change dollars to dollars/number of order
+intuit75k$dollars_per_order = (intuit75k$dollars)/(intuit75k$numords)
+
+perform = function(key, dataset='Test', graph = 'yes'){
+  # Lift, Gain, Profit, ROME
+  result <- evalbin(
+    intuit75k,
+    pred = key,
+    rvar = "res1",
+    lev = "Yes",
+    cost = cost,
+    margin = margin,
+    train = dataset,
+    data_filter = 'training == 1'
+  )
+  if (graph == 'yes'){
+  plot(result, plots = c("lift", "gains"), custom = FALSE)
+  }
+  # Confusion Matrix and profit&ROME
+  cm = confusion(
+    intuit75k,
+    pred = key,
+    rvar = 'res1',
+    lev = 'Yes',
+    cost = cost,
+    margin = margin,
+    train = dataset,
+    data_filter = 'training == 1'
+  )
+
+  return(list(result$dataset[,12:13],cm$dataset))
+
+}
+
+```
+
+
+### Logistic Regression
+
+First, we included all given variables to have a base logistic regression model. The summary output below shows that the variables sex, bizflag, and sincepurch are not statistically significant, and it also make a business sense. The sex information and address name format should not have an impact on wether a business is willing to upgrade. (Due to lack of descriptive information, we assume the sex describe the sex information of business owner.) In addition, the insignificancy of sincepurch might be explained by the existence of the variable last, they describe similar information and last is more predictive. 
+```{r echo=FALSE}
+Logit_Base = logistic(
+  intuit75k,
+  rvar = "res1",
+  evar = c(
+    "zip_bins", "numords", "dollars", "last",
+    "version1", "owntaxprod", "upgraded",'sex',
+    'bizflag','sincepurch'
+  ),
+  lev = "Yes",
+  data_filter = "training==1"
+)
+summary(Logit_Base)
+```
+
+Then, we excluded the variables that are not statistically significant. We can see from the output that all the variables are statistically significant now. 
+```{r echo=FALSE}
+Logit <- logistic(
+  intuit75k,
+  rvar = "res1",
+  evar = c(
+    "zip_bins", "numords", "dollars", "last",
+    "version1", "owntaxprod", "upgraded"
+  ),
+  lev = "Yes",
+  data_filter = "training==1"
+)
+summary(Logit)
+```
+
+The Lift and Gain plot on the validation set show that is model indeed is a improvement of just target random people, we can use this plot compare with other model’s Lift&Gain plot to see which one is better. 
+```{r echo=FALSE}
+Logit_pred = predict(Logit, pred_data = intuit75k)
+intuit75k$prob_logit = Logit_pred$Prediction
+Logit_performance = perform('prob_logit')
+```
+
+This model results a profit of 38557, ROME of 1.91, and AUC of 0.75. The accuracy is only 40% but it is reasonable in our case due to the extremely low classification threshold(0.02). Because the large difference between margin (60) and the mail cost (1.14), false negative will hurt us more than false positive in terms of profits. 
+```{r echo=FALSE}
+knitr::kable(Logit_performance[[2]], align = 'c') 
+```
+
+We want to further improve the model by change zip_bins to state because state is capturing more accurate geographic information about the data. Moreover, we change the dollar to dollar_per_order to solve the high correlation issue between dollar and number of orders. We can see from the output that all the variables are still statistically significant. 
+```{r echo=FALSE}
+Logit_final <- logistic(
+  intuit75k,
+  rvar = "res1",
+  evar = c(
+    "numords", "last",
+    "version1", "owntaxprod", "upgraded", "state", "dollars_per_order"
+  ),
+  lev = "Yes",
+  data_filter = "training ==1"
+)
+summary(Logit_final)
+```
+
+```{r echo=FALSE}
+Logit_pred_final <- predict(Logit_final, pred_data = intuit75k)
+intuit75k$prob_logit1 = Logit_pred_final$Prediction
+Logit_final_performance = perform("prob_logit1", graph = 'no')
+```
+
+The new model has a similar profit (only 40 dollar less), but it outperforms the pervious model in all other metrics such as lift, gain, AUC, and ROME. Therefore we consider it as a better model. 
+
+```{r echo=FALSE}
+logit_lift_gain = tibble(cumlift = Logit_performance[[1]]$cum_lift, 
+                         cumgain = Logit_performance[[1]]$cum_gains,
+                         decile = seq(1,10,1), 
+                         model = rep('logit',10)) 
+logit_update_lift_gain = tibble(cumlift = Logit_final_performance[[1]]$cum_lift, 
+                         cumgain = Logit_final_performance[[1]]$cum_gains,
+                         decile = seq(1,10,1), 
+                         model = rep('logit_update',10)) 
+Logit_compare = logit_lift_gain %>% union_all(logit_update_lift_gain)
+
+Logit_compare%>%
+  group_by(model)%>%
+  ggplot(aes(x=decile, y=cumlift, group = model, color = model))+geom_line()+geom_point()+
+  labs(title = 'Cumulative Lift for different model')
+
+Logit_compare%>%
+  group_by(model)%>%
+  ggplot(aes(x=decile, y=cumgain, group = model, color = model))+geom_line()+geom_point()+
+  labs(title = 'Cumulative Gain for different model')
+
+knitr::kable(Logit_final_performance[[2]], align = 'c') 
+```
+
+We also tried to include interaction term in our model; however, they brought down the model performance in terms of profits. In conclusion, we consider this to be our best logistic regression model.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,268 @@
+---
+title: Intuit Quickbooks Upgrade
+output: html_document
+---
+
+* Team-lead GitLab id:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 144,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if needed
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this R-markdown document with your group by answering the questions in `intuit-quickbooks.pdf` on Dropbox (week6/readings/). Create an HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when your team is done. All results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the Rmarkdown file without changes or errors). This means that you should NOT use any R-packages that are not part of the rsm-msba-spark docker container.
+
+This is the first group assignment for MGTA 455 and you will be using git and GitLab. If two people edit the same file at the same time you could get what is called a "merge conflict". git will not decide for you who's change to accept so the team-lead will have to determine which edits to use. To avoid merge conflicts, **always** click "pull" in Rstudio before you start working on a files. Then, when you are done, save and commit your changes, and then push them to GitLab. Make this a habit!
+
+If multiple people are going to work on the assignment at the same time I recommend you work on different files. You can use `source` to include R-code in your Rmarkdown document or include other R(markdown) documents into the main assignment file. 
+
+Group work-flow tips as discussed during ICT in Summer II are shown below:
+
+* Pull, edit, save, stage, commit, and push
+* Schedule who does what and when
+* Try to avoid working simultaneously on the same file 
+* If you are going to work simultaneously, do it in different files, e.g., 
+    - assignment1_john.R, assignment1_susan.R, assignment1_wei.R 
+    - assignment_1a.R, assignment_1b.R, assignment_1c.R
+* Use the `source` command to bring different pieces of code together into an Rmarkdown document or into an R-code file
+* Alternatively, use _child_ in Rmarkdown to include a part of a report
+* For (very) big projects use 'branches' to avoid conflicts (and stay on your branch)
+
+A graphical depiction of the group work-flow is shown below:
+
+![](images/git-group-workflow.png)
+
+Additional resource on the use of git are linked below:
+
+* http://happygitwithr.com
+* http://r-pkgs.had.co.nz/git.html
+* http://stackoverflow.com/questions/tagged/git or just a google search
+* https://try.github.io
+* https://www.manning.com/books/git-in-practice
+* https://github.com/GitInPractice/GitInPractice#readme
+
+
+```{r}
+## loading the data. Note that data must be loaded from Dropbox/MGTA455-2019/data
+library(ModelMetrics)
+library(tidyverse)
+library(radiant)
+library(zipcode)
+
+intuit75k <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/intuit75k.rds"))
+```
+
+
+```{r}
+## Transform variablr and add state
+
+data("zipcode")
+
+
+intuit75k <- intuit75k %>%
+  left_join(zipcode)
+
+
+intuit75k[is.na(intuit75k)] <- 0
+
+
+intuit75k <- mutate_at(intuit75k, .vars = vars(zip_bins,state ,bizflag, version1, owntaxprod, upgraded),
+                       .funs = as.factor)
+```
+
+```{r}
+## Define a performance function
+cost = 1.41
+margin = 60
+Break_even = cost/margin
+
+
+
+perform <- function(key){
+  # Lift, Gain, Profit, ROME
+  result <- evalbin(
+    intuit75k,
+    pred = key,
+    rvar = "res1",
+    lev = "Yes",
+    cost = cost,
+    margin = margin,
+    train = 'Test',
+    data_filter = 'training == 1'
+  )
+  #plot(result, plots = c("lift", "gains", "profit", "rome"), custom = FALSE)
+
+  # Confusion Matrix and profit&ROME
+  cm <- confusion(
+    intuit75k,
+    pred = key,
+    rvar = 'res1',
+    lev = 'Yes',
+    cost = cost,
+    margin = margin,
+    train = 'Test',
+    data_filter = 'training == 1'
+  )
+
+  return(list(result$dataset[,12:13],cm$dataset))
+}
+```
+
+
+
+
+
+```{r}
+## We first put every variable into the model to get intuition
+result_nb <- nb(intuit75k, rvar = "res1", evar =
+c("zip","zip_bins","sex","bizflag","numords","dollars","last","sincepurch","version1","owntaxprod","upgraded" ),
+data_filter = "training == 1")
+
+pred_nb <- predict(result_nb, pred_data = intuit75k)
+
+intuit75k$prob_nb <- pred_nb$Yes
+
+perform("prob_nb")
+
+```
+
+```{r fig.width = 10.77, fig.height = 10.77, dpi = 144}
+## Since Naive Bayes assumes variables are independent, we inspect the variables' correlation
+result <- correlation(
+  intuit75k, 
+  vars = c("zip_bins",
+    "bizflag", "numords", "dollars", "last", "sincepurch", 
+    "version1", "owntaxprod", "upgraded"
+  )
+)
+summary(result)
+plot(result, nrobs = 1000)
+```
+hint  naive bayes has a good performance.The assumption of the bayes model is that all variables are independent.So we check the correlation between all the variable and try to deal with the problem.Two pairs we notice is numords and dollars and version1 and sincepurch.To deal with numords and dollars we use dollars to divide by numords and the correlation between the new variable is very small.When we deal with version1 and sincepurch,delete one of them will lead to a decrease in acc,profit so we decide to remain them.
+To eliminate the high correlation of "numords" and "dollars", we make a transformation to divide dollars by the number of orders, and for another slightly high correlation, there's no better transformation than simply keeping them seperate
+
+```{r}
+
+intuit75k <- intuit75k %>%
+  mutate(avg_perord = dollars / numords)
+
+
+result_nb2 <- nb(intuit75k, rvar = "res1", evar =
+c('state',"sex","bizflag","numords","avg_perord","last","sincepurch","version1","owntaxprod","upgraded" ),
+data_filter = "training == 1")
+
+
+perd_nb_2_trans <- predict(result_nb2, pred_data = intuit75k)
+
+intuit75k$prob_nb_2 <- perd_nb_2_trans$Yes
+
+perform("prob_nb_2")
+
+```
+Finanly we get results like this:
+Acc 0.4742222
+profit	38052.33
+Rome	2.144075
+auc  0.7578876	
+	
+
+
+
+```{r}
+train <- intuit75k %>%
+  filter(training == 1)
+validation  <- intuit75k %>%
+  filter(training == 0)
+breakeven_response_rate <-1.41/60
+library(zipcode)
+data("zipcode")
+train_zip<- train %>%
+  left_join(zipcode,by = 'zip')%>%
+  mutate(dollars_new= dollars/numords)%>%
+  mutate(sincepurch_quan = radiant.data::xtile(sincepurch, 10))
+train_zip <- mutate_at(train_zip, .vars = vars(zip_bins, bizflag, version1, owntaxprod, upgraded),
+                       .funs = as.factor)
+train_zip[is.na(train_zip)] <- 0
+validation_zip <-validation %>%
+  left_join(zipcode,by ='zip')%>%
+  mutate(dollars_new= dollars/numords)%>%
+  mutate(sincepurch_quan = radiant.data::xtile(sincepurch, 10))
+validation_zip[is.na(validation_zip)] <- 0
+validation_zip <- mutate_at(validation_zip, .vars = vars(zip_bins, bizflag, version1, owntaxprod, upgraded),
+                       .funs = as.factor)
+validation_id <- validation %>%
+  select(id)
+for(i in 1:100){
+train_nn <-sample_n(train_zip,52500,replace= TRUE)
+result_nn <- nn(
+  train_nn, 
+  rvar = "res1", 
+  evar = c("zip_bins","sincepurch_quan",
+    "state.x", "sex", "bizflag", "numords", "dollars", "last", 
+    "sincepurch", "version1", "owntaxprod", "upgraded"
+  ), 
+  lev = "Yes",
+  size = 1,
+  seed = 1234
+)
+pred_nn <- predict(result_nn, pred_data = validation_zip)
+validation_id <- store(validation_id, pred_nn, name = as.character(i))
+if (i %in% c(1,10,20,30,40,50,60,70,80,90,100)){print(i)}}
+
+quan_list <-c()
+quan_list1 <- validation_id %>%
+  select(-id)%>%
+  apply(1,mean)
+for (i in 1 : nrow(validation_id)){ 
+quan_list <- append(quan_list,quantile(validation_id[i,],probs = c(0.05)))}
+nn_result <- data.frame(id = validation_id$id,prob_nn2 = as.numeric(quan_list),prob_nn1 =quan_list1)
+
+intuit75k<- left_join(intuit75k,nn_result,by ="id")
+intuit75k[is.na(intuit75k)] <- 0
+
+quan_nn<- perform("prob_nn1")
+average_nn <-perform("prob_nn2")
+quan_nn
+average_nn
+```
+Because neural network is a black box ,we try to put all the useful variable into the model and hope the model can decide which kind of variable is usually.So I put zip_bins and state together and put a new variable call sincepurch_quan which is a 10 quan purch of the variable sincepurch.And the model performance is almost the same as logistic regression in lower bound with a profit of 38071 and ROME 1.99.
+

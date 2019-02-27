@@ -1,0 +1,382 @@
+---
+title: Intuit Quickbooks Upgrade
+output: html_document
+---
+
+* Team-lead GitLab id:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 144,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if needed
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this R-markdown document with your group by answering the questions in `intuit-quickbooks.pdf` on Dropbox (week6/readings/). Create an HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when your team is done. All results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the Rmarkdown file without changes or errors). This means that you should NOT use any R-packages that are not part of the rsm-msba-spark docker container.
+
+This is the first group assignment for MGTA 455 and you will be using git and GitLab. If two people edit the same file at the same time you could get what is called a "merge conflict". git will not decide for you who's change to accept so the team-lead will have to determine which edits to use. To avoid merge conflicts, **always** click "pull" in Rstudio before you start working on a files. Then, when you are done, save and commit your changes, and then push them to GitLab. Make this a habit!
+
+If multiple people are going to work on the assignment at the same time I recommend you work on different files. You can use `source` to include R-code in your Rmarkdown document or include other R(markdown) documents into the main assignment file. 
+
+Group work-flow tips as discussed during ICT in Summer II are shown below:
+
+* Pull, edit, save, stage, commit, and push
+* Schedule who does what and when
+* Try to avoid working simultaneously on the same file 
+* If you are going to work simultaneously, do it in different files, e.g., 
+    - assignment1_john.R, assignment1_susan.R, assignment1_wei.R 
+    - assignment_1a.R, assignment_1b.R, assignment_1c.R
+* Use the `source` command to bring different pieces of code together into an Rmarkdown document or into an R-code file
+* Alternatively, use _child_ in Rmarkdown to include a part of a report
+* For (very) big projects use 'branches' to avoid conflicts (and stay on your branch)
+
+A graphical depiction of the group work-flow is shown below:
+
+![](images/git-group-workflow.png)
+
+Additional resource on the use of git are linked below:
+
+* http://happygitwithr.com
+* http://r-pkgs.had.co.nz/git.html
+* http://stackoverflow.com/questions/tagged/git or just a google search
+* https://try.github.io
+* https://www.manning.com/books/git-in-practice
+* https://github.com/GitInPractice/GitInPractice#readme
+
+
+```{r}
+## loading the data. Note that data must be loaded from Dropbox/MGTA455-2019/data
+library(ModelMetrics)
+intuit75k <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/intuit75k.rds"))
+```
+
+
+```{r}
+train <- intuit75k %>%
+  filter(training == 1)
+validation  <- intuit75k %>%
+  filter(training == 0)
+breakeven_response_rate <-1.41/60
+
+
+#write a function to get all the evaluation of a model
+perf_cal <-function(model,validation){
+
+validation_nb <- model %>%
+  predict(pred_data = validation)
+threshold <- breakeven_response_rate
+confusion_matrix <- data.frame(pred=validation_nb,fact=validation$res1)%>%
+  mutate(Pred.res1 = pred.Yes > threshold)%>%
+  count(Pred.res1,fact)
+acc_nb <- (confusion_matrix[2,3]+confusion_matrix[3,3])/sum(confusion_matrix$n)
+validation_mail <- data.frame(pred=validation_nb,fact=validation$res1)%>%
+  mutate(mailto_nb = pred.Yes > breakeven_response_rate)%>%
+  filter(mailto_nb ==TRUE)
+sample <- validation %>%
+  select(res1)%>%
+  mutate(res1 = as.numeric(res1=='Yes'))
+offer_send <- nrow(validation_mail)
+offer_upgate <- validation_mail %>%
+  filter(fact =='Yes')%>%
+  nrow()
+profit <-60*offer_upgate-1.41*offer_send
+ROME <- profit/(1.41*offer_send)
+auc1<- auc(sample$res1,validation_nb$Yes)
+
+report1 <- data.frame(pred=validation_nb,fact=validation$res1)%>%
+  mutate(fact = factor(x= fact ,level= c('Yes','No'),label= c(1,0)))%>%
+  mutate(prob_dec = radiant.data::xtile(pred.Yes, 10,rev=TRUE)/10)%>%
+  group_by(prob_dec)%>%
+  summarise(response_rate = mean(as.numeric(as.character(fact))),number_of_customer = n(),number_of_buyer = sum(as.numeric(as.character(fact))))%>%
+  mutate(Lift = response_rate / (sum(number_of_buyer)/sum(number_of_customer)))%>%
+  mutate(cumulative_response_rate = cumsum(number_of_buyer)/cumsum(number_of_customer))%>%
+  mutate(Cum_Lift = cumulative_response_rate / (sum(number_of_buyer)/sum(number_of_customer)))
+report2 <- report1 %>%
+  mutate(cum_buyer = cumsum(number_of_buyer))%>%
+  mutate(Gains = number_of_buyer /sum(number_of_buyer))%>%
+  mutate(Cum_gains = cum_buyer/sum(number_of_buyer))
+plot3 <- report1%>%
+  ggplot(aes(x=prob_dec,y=Cum_Lift))+geom_point()+geom_line()
+reference<- data.frame(x= 1:10/10,y=1:10/10)
+plot4 <- report2%>%
+  ggplot(aes(x=prob_dec,y=Cum_gains))+geom_point()+geom_line()+geom_line(aes(x=reference$x,y=reference$y))
+result <- data.frame(Acc = unname(acc_nb),profit = profit,Rome =ROME,auc=auc1)
+output <- list(result = result,plot_lift = plot3,plot_gain = plot4)
+return(output)
+}
+result_nb <- nb(train, rvar = "res1", evar =
+c("zip","zip_bins","sex","bizflag","numords","dollars","last","sincepurch","version1","owntaxprod","upgraded" ))
+evaluation_nb_basic <- perf_cal(result_nb,validation)
+```
+
+```{r fig.width = 10.77, fig.height = 10.77, dpi = 144}
+result <- correlation(
+  intuit75k, 
+  vars = c("zip_bins",
+    "bizflag", "numords", "dollars", "last", "sincepurch", 
+    "version1", "owntaxprod", "upgraded"
+  )
+)
+summary(result)
+plot(result, nrobs = 1000)
+```
+hint  naive bayes has a good performance.The assumption of the bayes model is that all variables are independent.So we check the correlation between all the variable and try to deal with the problem.Two pairs we notice is numords and dollars and version1 and sincepurch.To deal with numords and dollars we use dollars to divide by numords and the correlation between the new variable is very small.When we deal with version1 and sincepurch,delete one of them will lead to a decrease in acc,profit so we decide to remain them.
+
+```{r}
+
+library(zipcode)
+data("zipcode")
+train_zip<- train %>%
+  left_join(zipcode,by = 'zip')%>%
+  mutate(dollars_new= dollars/numords)%>%
+  mutate(sincepurch_quan = radiant.data::xtile(sincepurch, 10))
+train_zip <- mutate_at(train_zip, .vars = vars(zip_bins, bizflag, version1, owntaxprod, upgraded),
+                       .funs = as.factor)
+train_zip[is.na(train_zip)] <- 0
+validation_zip <-validation %>%
+  left_join(zipcode,by ='zip')%>%
+  mutate(dollars_new= dollars/numords)%>%
+  mutate(sincepurch_quan = radiant.data::xtile(sincepurch, 10))
+validation_zip[is.na(validation_zip)] <- 0
+validation_zip <- mutate_at(validation_zip, .vars = vars(zip_bins, bizflag, version1, owntaxprod, upgraded),
+                       .funs = as.factor)
+result_nb2 <- nb(train_zip, rvar = "res1", evar =
+c('state',"sex","bizflag","numords","dollars_new","last","sincepurch","version1","owntaxprod","upgraded" ))
+evaluation_nb2 <- perf_cal(result_nb2,validation_zip)
+evaluation_nb2 
+
+```
+Acc0.4742222
+profit	38052.33
+Rome	2.144075
+auc  0.7578876	
+	
+
+```{r}
+#RFM
+train_rfm <-train_zip %>%
+  mutate(rec_sq = radiant.data::xtile(last, 5))%>%
+  group_by(rec_sq)%>%
+  mutate(freq_sq= radiant.data::xtile(numords, 5,rev=TRUE))%>%
+  ungroup()%>%
+  group_by(rec_sq,freq_sq)%>%
+  mutate(mon_sq =radiant.data::xtile(dollars, 5,rev=TRUE))%>%
+  ungroup()%>%
+  mutate(rfm_sq = paste0(rec_sq,freq_sq,mon_sq))%>%
+  mutate(buyer = ifelse(res1 == "Yes", 1, 0))
+validation_rfm <-validation_zip %>%
+  mutate(rec_sq = radiant.data::xtile(last, 5))%>%
+  group_by(rec_sq)%>%
+  mutate(freq_sq= radiant.data::xtile(numords, 5,rev=TRUE))%>%
+  ungroup()%>%
+  group_by(rec_sq,freq_sq)%>%
+  mutate(mon_sq =radiant.data::xtile(dollars, 5,rev=TRUE))%>%
+  ungroup()%>%
+  mutate(rfm_sq = paste0(rec_sq,freq_sq,mon_sq))%>%
+  mutate(buyer = ifelse(res1 == "Yes", 1, 0))
+```
+
+
+```{r}
+perf_calc3 <- function(data_train,data_test,column_name){
+data_train_sub2<- data_train %>%
+  group_by_at(column_name)%>%
+  summarize(rate=mean(buyer),n=n())%>%
+  mutate(choose_train = breakeven_response_rate< rate)%>%
+  filter(choose_train == TRUE)
+data_test<- data_test %>%
+    mutate(choose_train  = data_test[[column_name]] %in% data_train_sub2[[column_name]])%>%
+    filter(choose_train == TRUE)
+  cost <- count(data_test)*1.41
+  profit <- sum(data_test$buyer)*60-cost
+  ROME <-profit/cost
+  return(c(cost,profit,ROME))
+}
+
+rfm_sq_question12<-perf_calc3(train_rfm,validation_rfm,'rfm_sq')
+rfm_sq_question12
+```
+
+Using RFM we get profit 32198 and ROME is 1.361.We can consider RFM as a baseline.
+
+```{r}
+perf_cal_nn <-function(model,validation){
+
+validation_nb <- model %>%
+  predict(pred_data = validation)
+threshold <-breakeven_response_rate
+confusion_matrix <- data.frame(pred=validation_nb,fact=validation$res1)%>%
+  mutate(Pred.res1 = pred.Prediction > threshold)%>%
+  count(Pred.res1,fact)
+acc_nb <- (confusion_matrix[2,3]+confusion_matrix[3,3])/sum(confusion_matrix$n)
+validation_mail <- data.frame(pred=validation_nb,fact=validation$res1)%>%
+  mutate(mailto_nb = pred.Prediction > breakeven_response_rate)%>%
+  filter(mailto_nb ==TRUE)
+sample <- validation %>%
+  select(res1)%>%
+  mutate(res1 = as.numeric(res1=='Yes'))
+offer_send <- nrow(validation_mail)
+offer_upgate <- validation_mail %>%
+  filter(fact =='Yes')%>%
+  nrow()
+profit <-60*offer_upgate-1.41*offer_send
+ROME <- profit/(1.41*offer_send)
+auc1<- auc(sample$res1,validation_nb$Prediction)
+report1 <- data.frame(pred=validation_nb,fact=validation$res1)%>%
+  mutate(fact = factor(x= fact ,level= c('Yes','No'),label= c(1,0)))%>%
+  mutate(prob_dec = radiant.data::xtile(pred.Prediction, 10,rev=TRUE)/10)%>%
+  group_by(prob_dec)%>%
+  summarise(response_rate = mean(as.numeric(as.character(fact))),number_of_customer = n(),number_of_buyer = sum(as.numeric(as.character(fact))))%>%
+  mutate(Lift = response_rate / (sum(number_of_buyer)/sum(number_of_customer)))%>%
+  mutate(cumulative_response_rate = cumsum(number_of_buyer)/cumsum(number_of_customer))%>%
+  mutate(Cum_Lift = cumulative_response_rate / (sum(number_of_buyer)/sum(number_of_customer)))
+report2 <- report1 %>%
+  mutate(cum_buyer = cumsum(number_of_buyer))%>%
+  mutate(Gains = number_of_buyer /sum(number_of_buyer))%>%
+  mutate(Cum_gains = cum_buyer/sum(number_of_buyer))
+plot3 <- report1%>%
+  ggplot(aes(x=prob_dec,y=Cum_Lift))+geom_point()+geom_line()
+reference<- data.frame(x= 1:10/10,y=1:10/10)
+plot4 <- report2%>%
+  ggplot(aes(x=prob_dec,y=Cum_gains))+geom_point()+geom_line()+geom_line(aes(x=reference$x,y=reference$y))
+result <- data.frame(Acc = unname(acc_nb),profit = profit,Rome =ROME,auc=auc1)
+output <- list(result = result,plot_lift = plot3,plot_gain = plot4)
+return(output)
+
+}
+
+
+```
+
+
+```{r}
+#NN
+validation_id <- validation %>%
+  select(id)
+for(i in 1:100){
+train_nn <-sample_n(train_zip,52500,replace= TRUE)
+result_nn <- nn(
+  train_nn, 
+  rvar = "res1", 
+  evar = c(
+    "state", "sex", "bizflag", "numords", "dollars", "last", 
+    "sincepurch", "version1", "owntaxprod", "upgraded"
+  ), 
+  lev = "Yes",
+  size = 3,
+  seed = 1234
+)
+pred_nn <- predict(result_nn, pred_data = validation_zip)
+validation_id <- store(validation_id, pred_nn, name = as.character(i))
+print(i)}
+```
+```{r}
+quan_list <-c()
+quan_list1 <- validation_id %>%
+  select(-id)%>%
+  apply(1,mean)
+for (i in 1 : nrow(validation_id)){ 
+quan_list <- append(quan_list,quantile(validation_id[i,],probs = c(0.05)))}
+nn_result <- data.frame(id = validation_id$id,prob2 = as.numeric(quan_list),prob =quan_list1)
+threshold <-breakeven_response_rate
+confusion_matrix_nn <- data.frame(pred=nn_result,fact=validation$res1)%>%
+  mutate(Pred.res1 = pred.prob > threshold)%>%
+  count(Pred.res1,fact)
+acc_nn <- (confusion_matrix_nn[2,3]+confusion_matrix_nn[3,3])/sum(confusion_matrix_nn$n)
+validation_nn <- data.frame(pred=nn_result,fact=validation$res1)%>%
+  mutate(mailto_nb = pred.prob > breakeven_response_rate)%>%
+  filter(mailto_nb ==TRUE)
+sample <- validation %>%
+  select(res1)%>%
+  mutate(res1 = as.numeric(res1=='Yes'))
+offer_send <- nrow(validation_nn)
+offer_upgate <- validation_nn %>%
+  filter(fact =='Yes')%>%
+  nrow()
+profit <-60*offer_upgate-1.41*offer_send
+ROME <- profit/(1.41*offer_send)
+auc1<- auc(sample$res1,nn_result$prob)
+report1 <- data.frame(pred=nn_result,fact=validation$res1)%>%
+  mutate(fact = factor(x= fact ,level= c('Yes','No'),label= c(1,0)))%>%
+  mutate(prob_dec = radiant.data::xtile(pred.prob, 10,rev=TRUE)/10)%>%
+  group_by(prob_dec)%>%
+  summarise(response_rate = mean(as.numeric(as.character(fact))),number_of_customer = n(),number_of_buyer = sum(as.numeric(as.character(fact))))%>%
+  mutate(Lift = response_rate / (sum(number_of_buyer)/sum(number_of_customer)))%>%
+  mutate(cumulative_response_rate = cumsum(number_of_buyer)/cumsum(number_of_customer))%>%
+  mutate(Cum_Lift = cumulative_response_rate / (sum(number_of_buyer)/sum(number_of_customer)))
+report2 <- report1 %>%
+  mutate(cum_buyer = cumsum(number_of_buyer))%>%
+  mutate(Gains = number_of_buyer /sum(number_of_buyer))%>%
+  mutate(Cum_gains = cum_buyer/sum(number_of_buyer))
+plot3 <- report1%>%
+  ggplot(aes(x=prob_dec,y=Cum_Lift))+geom_point()+geom_line()
+reference<- data.frame(x= 1:10/10,y=1:10/10)
+plot4 <- report2%>%
+  ggplot(aes(x=prob_dec,y=Cum_gains))+geom_point()+geom_line()+geom_line(aes(x=reference$x,y=reference$y))
+result <- data.frame(Acc = unname(acc_nn),profit = profit,Rome =ROME,auc=auc1)
+output <- list(result = result,plot_lift = plot3,plot_gain = plot4)
+output
+```
+
+
+```{r}
+train_nn <-sample_n(train_zip,52500,replace= TRUE)
+result_nn <- nn(
+  train_nn, 
+  rvar = "res1", 
+  evar = c(
+    "state", "sex", "bizflag", "numords", "dollars", "last", 
+    "sincepurch", "version1", "owntaxprod", "upgraded"
+  ), 
+  lev = "Yes", 
+  size = 1,
+  seed = 1234
+)
+c<-perf_cal_nn(result_nn,validation_zip)
+c
+```
+
+Alternatively you can source code from an .R file as follows:
+
+```{r}
+source("question-1.R", local = TRUE)
+```
+
+## Question answers
