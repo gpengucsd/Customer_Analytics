@@ -1,0 +1,107 @@
+---
+title: Intuit Trees and Nets
+output: html_document
+---
+
+* Team-lead GitLab id:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 144,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if needed
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this R-markdown document with your group by working through the guidelines in `intuit-trees-nets.pdf` on Dropbox (week7/readings/). Create an HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when your team is done. All results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the Rmarkdown file without changes or errors). Also, make sure the code is well commented and formatted (e.g., use styler through Addins > Style active file in Rstudio).
+
+This is the second group assignment for MGTA 455 and you will be using git and GitLab. If two people edit the same file at the same time you could get what is called a "merge conflict". git will not decide for you who's change to accept so the team-lead will have to determine which edits to use. To avoid merge conflicts, always click "pull" in Rstudio before you start working on file. Then, when you are done, commit your changes, and push them to GitLab. Make this a habit!
+
+If multiple people are going to work on the assignment at the same time I recommend you work on different files. You can use `source` to include R-code in your Rmarkdown document or include other R(markdown) documents into the main assignment file. 
+
+Group work-flow tips are listed from ICT in summer are shown below:
+
+* Pull, edit, save, stage, commit, and push
+* Schedule who does what and when
+* Try to avoid working simultaneously on the same file 
+* If you are going to work simultaneously, do it in different files, e.g., 
+    - assignment1_john.R, assignment1_susan.R, assignment1_wei.R 
+    - assignment1a.R, assignment1b.R, assignment1c.R
+* Use the 'source' command to bring different pieces of code together in an Rmarkdown document or in an R-code file
+* Alternatively, use _child_ in Rmarkdown to include a part of a report
+* For (very) big projects use 'branches' to avoid conflicts (and stay on your branch)
+
+A graphical depiction of the group work-flow is shown below:
+
+![](images/git-group-workflow.png)
+
+Additional resource on the use of git are linked below:
+
+* http://happygitwithr.com
+* http://r-pkgs.had.co.nz/git.html
+* http://stackoverflow.com/questions/tagged/git or just a google search
+* https://try.github.io
+* https://www.manning.com/books/git-in-practice
+* https://github.com/GitInPractice/GitInPractice#readme
+
+
+```{r}
+## loading the data. Note that data must be loaded from the data/
+## in the rstudio project directory
+intuit75k <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/intuit75k.rds"))
+```
+
+Below an example of how you could include another Rmd file inside your main assignment Rmarkdown document. Note:  don't add a YAML header to the _child_ file! 
+
+```{r, child = "model1.Rmd"}
+```
+
+Alternatively you can source code from an .R file as follows:
+
+```{r}
+source("model1.R", local = TRUE)
+```
+
+Long running cross-validation should be put in a separate R-code file that can be sourced from the main Rmarkdown document. The code should **not** run by default when the TA or I knit your Rmarkdown document. The format should be like the code chunk below where we can soruce the cross-validation code if needed but by default just loads a data.frame from a file with the cross-validation results.
+
+```{r}
+# source("cross-validation-nn.R", local = TRUE)
+load("data/cross-validation-results.rds")
+```
+

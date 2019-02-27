@@ -1,0 +1,255 @@
+---
+title: Intuit Trees and Nets
+output: html_document
+---
+
+* Team-lead GitLab id: rsm-zhl030
+* Group number: 7
+* Group name: team7
+* Team member names: Mingjun Chen, Gaofeng Peng, Zhengyang Sun, Zheyu Li
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 144,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if needed
+if (!exists("r_environment")) library(radiant)
+```
+
+
+
+```{r echo=FALSE, include = FALSE}
+library(tidyverse)
+library(radiant)
+#library(zipcode)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(nnet)
+```
+
+```{r echo=FALSE}
+intuit75k <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/intuit75k.rds"))
+```
+
+```{r echo=FALSE}
+cost = 1.41
+margin = 60
+Break_even = cost/margin
+
+
+# change data type and add state 
+intuit75k$zip801 = intuit75k$zip== '00801'
+intuit75k$zip804 = intuit75k$zip== '00804'
+intuit75k <- mutate_at(intuit75k, .vars = vars(zip_bins, bizflag, version1, owntaxprod,
+                                               upgraded), .funs = as.factor)
+
+```
+
+```{r}
+training_set = intuit75k%>%filter(training == 1)
+test_set = intuit75k%>%filter(training != 1)
+```
+
+
+```{r}
+#source("Cross Validation.R", local = TRUE)
+```
+
+### Random Forest (From cross validation the best myty=8)
+
+```{r}
+# no cv control
+fitControl_final <- trainControl(method = "none", classProbs = TRUE)
+classifier_rf <- train( 
+  form = res1 ~ zip_bins+sex+bizflag+numords+dollars+last+sincepurch+
+    version1+owntaxprod+upgraded+zip801+zip804, 
+  data = training_set,
+  method = "rf",
+  trControl = fitControl_final,
+  tuneGrid = data.frame(mtry = 8)
+)
+```
+
+
+```{r}
+y_pred = predict(classifier_rf, newdata = test_set[-c(1,2,13,14)], type = 'prob')[,1]
+test_set$prob_rf = y_pred
+cm = confusion(
+    test_set,
+    pred = 'prob_rf',
+    rvar = 'res1',
+    lev = 'Yes',
+    cost = cost,
+    margin = margin,
+  )
+
+#classifier$bestTune
+knitr::kable(cm$dataset, align = 'c') 
+```
+
+
+
+
+### XGboost
+
+```{r}
+fitControl_final <- trainControl(method = "none", classProbs = TRUE)
+
+set.seed(123)
+classifier_xgb <- train( 
+  form = res1 ~ zip_bins+sex+bizflag+numords+dollars+last+sincepurch+
+    version1+owntaxprod+upgraded+zip801+zip804, 
+  data = training_set,
+  method = "xgbTree",
+  trControl = fitControl_final,
+  tuneGrid = data.frame(nrounds = 500,
+                        max_depth = 4,
+                        eta = 0.02,
+                        gamma = 0.06,
+                        colsample_bytree = 0.75,
+                        subsample = 1,
+                        min_child_weight = 0)
+)
+```
+
+
+
+```{r}
+prob_xgb = predict(classifier_xgb, newdata = test_set[-c(1,2,13,14)], type = 'prob')[,1]
+test_set$prob_xgb = prob_xgb
+cm = confusion(
+    test_set,
+    pred = 'prob_xgb',
+    rvar = 'res1',
+    lev = 'Yes',
+    cost = cost,
+    margin = margin,
+  )
+
+knitr::kable(cm$dataset, align = 'c') 
+```
+
+
+
+### NN 
+
+
+```{r}
+rvar <- "res1"
+evar <- c("zip_bins","sex","bizflag","numords","dollars","last","sincepurch","version1","owntaxprod","upgraded","zip801","zip804")
+lev <- "Yes"
+
+classifier_nn <- nn(training_set, rvar = rvar, evar = evar, lev = lev, size = 2, decay = 0.05, seed = 1234)
+
+```
+
+
+```{r}
+prob_nn = predict(classifier_nn, test_set)$Prediction
+test_set$prob_nn = prob_nn
+cm = confusion(
+    test_set,
+    pred = 'prob_nn',
+    rvar = 'res1',
+    lev = 'Yes',
+    cost = cost,
+    margin = margin,
+  )
+
+knitr::kable(cm$dataset, align = 'c') 
+```
+
+
+### average of xgboost and nn
+
+```{r}
+test_set$comb = (test_set$prob_xgb+test_set$prob_nn)/2
+cm = confusion(
+    test_set,
+    pred = 'comb',
+    rvar = 'res1',
+    lev = 'Yes',
+    cost = cost,
+    margin = margin,
+  )
+
+#classifier$bestTune
+knitr::kable(cm$dataset, align = 'c') 
+```
+
+
+
+```{r}
+last_data = read_rds('prediction.rds')%>% filter(training==0)
+test_set$prob_nnk = last_data$predDL
+
+
+
+intuit75k <- intuit75k %>%
+  left_join(test_set)
+intuit75k[is.na(intuit75k)] <- 0
+
+for (i in 1:40){
+cost = 1.41
+margin = 60
+Break_even = cost/margin
+intuit75k_validation <- intuit75k%>%
+  mutate(res1 =ifelse(res1 == 'No',0,1))%>%
+  filter(training ==0)%>%
+  mutate(mailto = comb/(1.8+i*0.01) > Break_even)
+mail_to_rate = mean(intuit75k_validation$mailto)
+intuit75k_validation1 <- intuit75k_validation%>%
+  filter(mailto == TRUE)
+response_rate <- mean(intuit75k_validation1$res1)/2
+cost1<- 1.41*763334*mail_to_rate
+profit1 <- 60*763334*mail_to_rate*response_rate-cost1
+print(c(i,profit1))}
+#so i = 26 reach maximum 455103.8
+#get id
+intuit75k_validation <- intuit75k%>%
+  mutate(res1 =ifelse(res1 == 'No',0,1))%>%
+  filter(training ==0)%>%
+  mutate(mailto_wave2 = comb/(2) > Break_even)
+
+
+
+mail_to_rate = mean(intuit75k_validation$mailto_wave2)
+intuit75k_validation1 <- intuit75k_validation%>%
+  filter(mailto_wave2 == TRUE)
+response_rate <- mean(intuit75k_validation1$res1)/2
+cost1<- 1.41*763334*mail_to_rate
+profit1 <- 60*763334*mail_to_rate*response_rate-cost1
+
+result_output<-intuit75k_validation %>%
+  select(id,mailto_wave2)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

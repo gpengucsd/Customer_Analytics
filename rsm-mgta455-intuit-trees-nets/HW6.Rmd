@@ -1,0 +1,100 @@
+---
+title: "SC HW6"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(readxl)
+```
+
+# Question1
+
+```{r}
+MEAN <- tibble(LaJolla = 40, StPaul = 40)
+SD <- tibble(LaJolla = 8, StPaul = 4) 
+lead_time <- 4
+
+Demand_mean <- MEAN * 4
+Demand_sd <- SD * sqrt(4)
+
+NineFive_z <- 1.65
+
+#a
+Safty_stock <- Demand_sd * NineFive_z
+
+reorder_point <- Demand_mean + Safty_stock
+print(paste('Safty_stock in La Jolla will be:',Safty_stock$LaJolla,', in St Paul will be:',Safty_stock$StPaul,'. Reorder Point in La Jolla is:',reorder_point$LaJolla,', in St Paul is:',reorder_point$StPaul))
+
+
+#b
+U_price <- 8.75
+Cost_of_capital <- 0.2
+HoldCost_Is <- Safty_stock * U_price * Cost_of_capital
+print(paste('Holding Cost for safty stock in La Jolla Store will be:$', HoldCost_Is$LaJolla,'in St Paul will be:$',HoldCost_Is$StPaul))
+
+#c
+print('Under condition that each stores will pay same price per order, St Paul Store has higher turns cuz it has less average inventory and thus might spend less time to sale them.')
+
+```
+
+# Question2
+
+```{r}
+Demand_mean <- 100
+Demand_sd <- 40
+lead_time <- 2
+U_price <- 3.5
+NineEight_z <- 2.0537
+N_colors <- 75
+Cost_of_capital <- 0.2
+
+#a
+Safty_stock <- Demand_sd * sqrt(lead_time) * NineEight_z
+
+print(paste("Safty Stock for each color should be:",Safty_stock))
+#b
+HoldCost_Is_total <- Safty_stock * U_price * N_colors * Cost_of_capital
+
+print(paste("Holding Cost for safty stock in total would be: $",HoldCost_Is_total))
+#c
+Demand_mean_single <- Demand_mean * N_colors
+Demand_sd_single <- Demand_sd * sqrt(N_colors)
+
+Safty_stock_singe <- Demand_sd_single * sqrt(lead_time) * NineEight_z
+Hold_Cost_Is_singel <- Safty_stock_singe * U_price *Cost_of_capital
+
+Leaseing_max <- HoldCost_Is_total - Hold_Cost_Is_singel
+
+print(paste("Holding Cost for safty stock in total would be:$",Hold_Cost_Is_singel,' if we implement new method of customization. The difference is: $',Leaseing_max/12,', which would be maximum price that Fun Colors should accept if they want benefit from new approach.'))
+```
+
+# Question3
+
+```{r}
+Faucet_filter <- read_excel('Faucet Filter LED Data.xlsx', sheet = 2)
+Target <- 100
+LS <- 80
+US <- 120
+
+#1
+perc_defective <- mean(Faucet_filter[1:5,2:ncol(Faucet_filter)] > 120 | Faucet_filter[1:5,2:ncol(Faucet_filter)] < 80)
+print(paste('Percentage of defectives is:',perc_defective))
+
+#2
+mean_onefive <- mean(as.matrix(Faucet_filter[1:5,2:ncol(Faucet_filter)]))
+sd_onefive <- sd(as.matrix(Faucet_filter[1:5,2:ncol(Faucet_filter)]))
+Sigma_capa <- pmin((US - mean_onefive)/sd_onefive,(mean_onefive - LS)/sd_onefive)
+print(paste('The process is',Sigma_capa,'sigmas process.'))
+
+#3
+Cpk <- Sigma_capa / 3
+print(paste('Cpk of process is:',Cpk))
+
+#4
+Cp <- (US-LS)/(6*sd_onefive)
+print(paste('Cp of process is:',Cp))
+```
+
+
