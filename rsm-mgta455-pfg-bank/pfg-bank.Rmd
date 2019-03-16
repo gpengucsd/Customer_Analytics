@@ -1,0 +1,120 @@
+---
+title: "PFG-bank: Data Driven Credit Card Design"
+output: html_document
+---
+
+* Team-lead gitlab id:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this R-markdown document by answering the questions in `pfg-bank.pdf` on Dropbox (week10/readings/). The code block below will load the historical data from exhibits 1 and 2. Please DO NOT change the code used to load the data. Create an HTML (Notebook) file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when you are done. All analysis results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the R-markdown file without changes or errors).
+
+```{r}
+fp <- radiant.data::find_dropbox()
+exhibit1 <- readxl::read_excel(file.path(fp, "MGTA455-2019/data/exhibits.xlsx"), sheet = "exhibit1")
+exhibit1  <- mutate_at(exhibit1 , .vars = vars(apr,fixed_var,annual_fee,bk_score), .funs = as.factor)
+exhibit2 <- readxl::read_excel(file.path(fp, "MGTA455-2019/data/exhibits.xlsx"), sheet = "exhibit2")
+exhibit2  <- mutate_at(exhibit2 , .vars = vars(apr,fixed_var,annual_fee), .funs = as.factor)
+```
+
+```{r}
+library(radiant)
+library(dplyr)
+## Gather columns
+Copy_of_exhibits_gathered <- gather(exhibit1, key, value, non_resp, resp, factor_key = TRUE)
+
+## register the new dataset
+register("Copy_of_exhibits_gathered", "Copy_of_exhibits")
+## Create data from a table
+Copy_of_exhibits_gathered_dat <- select(Copy_of_exhibits_gathered, date, apr, fixed_var, annual_fee, visamc, nr_mailed, bk_score, average_bk, key, value) %>%
+  table2data("value")
+
+## register the new dataset
+register("Copy_of_exhibits_gathered_dat", "Copy_of_exhibits_gathered")
+## expanding data
+Copy_of_exhibits_gathered_dat_expand <- expand.grid(level_list(Copy_of_exhibits_gathered_dat,  apr, fixed_var, annual_fee, bk_score))
+
+## register the new dataset
+register("Copy_of_exhibits_gathered_dat_expand", "Copy_of_exhibits_gathered_dat")
+
+
+
+result <- logistic(
+  Copy_of_exhibits_gathered_dat, 
+  rvar = "key", 
+  evar = c("apr", "fixed_var", "annual_fee", "bk_score"), 
+  lev = "resp"
+)
+summary(result)
+
+pred <- predict(result, pred_data = Copy_of_exhibits_gathered_dat_expand)
+print(pred, n = 10)
+Copy_of_exhibits_gathered_dat_expand <- store(Copy_of_exhibits_gathered_dat_expand, pred, name = "pred_logit")
+```
+```{r}
+exhibit_new <- exhibit1 %>%
+  mutate(response_rate =resp /nr_mailed)%>%
+  select(apr,fixed_var,annual_fee,response_rate,bk_score)
+full_table_withna <- left_join(exhibit2,exhibit_new, by = c("apr", "fixed_var", "annual_fee"))
+```
+
+
+```{r}
+exhibit <- exhibit1 %>%
+  mutate(response_rate =resp /nr_mailed)%>%
+  select(apr,fixed_var,annual_fee,response_rate,bk_score)%>%
+  right_join(Copy_of_exhibits_gathered_dat_expand,by = c("apr", "fixed_var", "annual_fee", "bk_score"))%>%
+  mutate(response_rate = pred_logit)
+######
+full_table <- right_join(exhibit2,exhibit, by = c("apr", "fixed_var", "annual_fee")) %>%
+  mutate(clv = ifelse(bk_score ==250,ltv250,ifelse(bk_score==200,ltv200,ltv150)))%>%
+  select(apr,fixed_var,annual_fee,response_rate,bk_score,clv)%>%
+  mutate(clv_final = clv*response_rate)%>%
+  arrange(desc(clv_final,bk_score))
+```
+
+## Question answers
+
+Are predictive models estimated on historical data useful in this case? If so, why? If not, why not?
+Historical data is useful because even though the interested rates had dropped in the past six month and a competitor offers a non-fee program ,this thing will not change the sequence of the rank of different product for the same customer.We consider that the precise percentage will change but the rank of different product will not change based on historical data.Because customers will remain the same behaviour in a long term of time if the target costomers are the same. Based on the historical data ,0-annual-fee projects perform much better than 20 annual fee projects.And there is a new 0-based competitor,so 0 annual fee will be more attractive and in the round 1 we can just skip the 20 annual fee project.And the interest rate drops may lead to the fact that the variable fee method is more attractive ,it is different from what we get from the historical data. So we may discuss this after that.
+In a wordd,the predictive models based on historical data is useful,we can check the rank relationship with the round 1 test after that to make sure it is on the right trail.But if the target customer don't change a lot in the past 6 months,this will be a good predictive moedels.
+
