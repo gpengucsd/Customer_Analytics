@@ -1,0 +1,272 @@
+---
+title: "S-Mobile: Predicting Customer Churn"
+output: html_document
+---
+
+* Team-lead gitlab id:
+* Group number:
+* Group name:
+* Team member names:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## load radiant packages if neededi
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this R-markdown document by answering the questions in `s-mobile.pdf` on Dropbox (week9/readings/). The code block below will load the data you will need. Please DO NOT change the code used to load the data. Create an HTML file with all your results and comments and push both the Rmarkdown and HTML file to GitLab when you are done. All analysis results MUST be reproducible (i.e., the TA and I must be able to recreate the HTML from the R-markdown file without changes or errors). Upload all files to GitLab.
+
+```{r}
+## Loading the data from Dropbox
+library(caret)
+library(stringr)
+s_mobile <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/s_mobile.rds")) 
+```
+```{r}
+train <- s_mobile %>%
+  filter(training == 1)
+validation <- s_mobile %>%
+  filter(training == 0)
+test <- s_mobile%>%
+  filter(representative ==1)
+```
+
+```{r}
+
+result <- logistic(
+  train, 
+  rvar = "churn", 
+  evar = c(
+    "changer", "changem", "revenue", "mou", "overage", "roam", 
+    "conference", "months", "uniqsubs", "custcare", "retcalls", 
+    "dropvce", "eqpdays", "refurb", "smartphone", "highcreditr", 
+    "mcycle", "car", "travel", "region", "occupation"
+  ), 
+  lev = "yes"
+)
+result_standard <- logistic(
+  train, 
+  rvar = "churn", 
+  evar = c(
+    "changer", "changem", "revenue", "mou", "overage", "roam", 
+    "conference", "months", "uniqsubs", "custcare", "retcalls", 
+    "dropvce", "eqpdays", "refurb", "smartphone", "highcreditr", 
+    "mcycle", "car", "travel", "region", "occupation"
+  ), 
+  lev = "yes", 
+  check = "standardize"
+)
+pred_standard <- predict(result_standard, pred_data = validation)
+validation <- store(validation, pred_standard, name = "pred_standard")
+pred <- predict(result, pred_data = validation)
+validation <- store(validation, pred, name = "pred_normal")
+
+```
+```{r}
+rvar = "churn"
+evar = c(
+    "changer", "changem", "revenue", "mou", "overage", "roam", 
+    "conference", "months", "uniqsubs", "custcare", "retcalls", 
+    "dropvce", "eqpdays", "refurb", "smartphone", "highcreditr", 
+    "mcycle", "car", "travel", "region", "occupation"
+  )
+lev = "yes"
+
+## nn size 1, decay = 0.5
+nn1_result = nn(train, rvar = rvar, evar = evar, lev = lev, size = 3, decay = 0.15, seed = 1234)
+vals <- cv.nn(nn1_result, size = 1:4, decay = seq(0, 0.5, 0.05))
+```
+```{r}
+nn_result = nn(train, rvar = rvar, evar = evar, lev = lev, size = 5, decay = 0.1, seed = 1234)
+pred_nn <- predict(nn_result, pred_data = validation)
+validation <- store(validation, pred_nn, name = "pred_nn")
+```
+
+
+
+```{r}
+result_evaludation <- evalbin(
+  validation, 
+  pred = c('pred_normal','pred_nn'),
+  rvar = "churn", 
+  lev = "yes"
+)
+result_confusion <- confusion(
+ validation, 
+  pred = c('pred_normal','pred_nn'),
+  rvar = "churn", 
+  lev = "yes"
+)
+summary(result_confusion)
+summary(result_evaludation, prn = FALSE)
+plot(result_evaludation, plots = c("gains"), custom = FALSE)
+```
+
+
+
+```
+
+## nn size 1, decay = 0.5
+nn1_result = nn(train, rvar = rvar, evar = evar, lev = lev, size = 3, decay = 0.15, seed = 1234)
+```
+```{r}
+plot(nn_result, plots = c('garson'), custom = FALSE)
+plot(nn_result, plots = c('olden'), custom = FALSE)
+plot(result_standard, plots = "coef", nrobs = "1000", custom = FALSE)
+```
+```{r}
+sd_list<-data.frame(lapply(train,sd))
+sd_list <-gather(sd_list)
+
+result_table <-result$coeff %>%
+  filter(p.value <=0.05)
+result_table<- left_join(result_table,sd_list, by =c('label'='key'))
+for (i in 1: nrow(result_table)){
+  if(i >9){ result_table[i,9] = TRUE}else{result_table[i,9]=FALSE}
+}
+result_table <-result_table %>%
+  mutate( importance = ifelse(V9 ==TRUE,ifelse(OR>1,OR,1/OR),ifelse(OR^(2*value)>1,OR^(2*value),1/OR^(2*value))))%>%
+  arrange(desc(importance))
+result_table
+```
+
+```{r}
+adjust_prob = function(p){
+  p_adj = p / (p + (1 - p) * (1 - 0.02) / 0.02)
+  return(p_adj)
+}
+
+pred_default <- predict(result_standard, pred_data = test)
+test <- store(test, pred_default, name = "pred_normal")%>%
+  mutate(pred_normal = adjust_prob(pred_normal))
+
+pred_overage <- predict(result_standard, pred_data = test, pred_cmd = "overage = 0")
+test<- store(test, pred_overage, name = "pred_overage")%>%
+  mutate(pred_overage = adjust_prob(pred_overage))
+
+
+baseline_churn <- mean(test$pred_normal)
+projected_churn <- mean(test$pred_overage)
+revenue <- mean(test$revenue)
+
+#We assume that the discount rate is 10% per year and cogs is 0,7
+
+
+clv <- function(rev_sub,churn) {
+month <- 1:60
+discount <- .1 ## annual discount rate
+cogs <- .7
+month_discount<-(1+discount)^(1/12)-1
+revenue_month <-tibble::tibble(month, revenue_sub=rev_sub,churn=1-churn )
+revenue_month$churn[1] =1
+for (i in 2: length(revenue_month$churn)){
+  revenue_month$churn[i]  = revenue_month$churn[i]*revenue_month$churn[i - 1]
+}
+revenue_month <- revenue_month %>%
+  mutate(total_revenue = (revenue_sub*churn)*(1-cogs)/ (1 + month_discount)^(month))%>%
+  mutate(sum_revenue = cumsum(total_revenue))
+return(revenue_month)
+}
+
+clv_baseline <-clv(revenue,baseline_churn)
+clv_projected <-clv(revenue,projected_churn)
+tail(clv_baseline)
+tail(clv_projected)
+```
+Don't charge customer extra fee of overage.But the company should not tell customer the fact.
+
+```{r}
+pred_retcalls <- predict(result_standard, pred_data = test, pred_cmd = "retcalls = 0")
+test<- store(test, pred_retcalls, name = "pred_retcalls")%>%
+  mutate(pred_retcalls = adjust_prob(pred_retcalls))
+projected_churn_retcalls <- mean(test$pred_retcalls)
+clv_retcalls <-clv(revenue,projected_churn_retcalls)
+tail(clv_baseline)
+tail(clv_retcalls)
+
+
+```
+
+## Question answers
+```{r}
+baseline_churn_filter <- test%>%
+  filter(eqpdays >= 365)
+revenue_filter <- mean(baseline_churn_filter$revenue)
+baseline_churn_filter_line <- mean(baseline_churn_filter$pred_normal)
+pred_eqpdays <- predict(result_standard, pred_data = test, pred_cmd = "eqpdays = 0")
+test<- store(test, pred_eqpdays, name = "pred_eqpdays")%>%
+  mutate(pred_eqpdays = adjust_prob(pred_eqpdays))
+projected_churn_eqpdays <- mean(test$pred_eqpdays)
+clv_eqpdays <-clv(revenue_filter,projected_churn_eqpdays)
+clv_baseline_new <-clv(revenue_filter,baseline_churn_filter_line)
+tail(clv_baseline_new)
+tail(clv_eqpdays)
+```
+```{r}
+test_new <- test %>%
+  mutate( eqpdays = ifelse(eqpdays >=365,0,eqpdays))
+pred_eqpdays_new <- predict(result_standard, pred_data = test_new)
+test_new<- store(test_new, pred_eqpdays_new, name = "pred_eqpdays_new")%>%
+  mutate(pred_eqpdays_new = adjust_prob(pred_eqpdays_new))
+projected_churn_eqpdays_new <- mean(test_new$pred_eqpdays_new)
+clv_eqpdays_new <-clv(revenue,projected_churn_eqpdays_new)
+tail(clv_eqpdays_new)
+```
+```{r}
+#optimizer
+super_cal <- function(revenue){
+  month <-1:60
+  discount <- .1
+  month_discount<-(1+discount)^(1/12)-1
+  revenue_month <-tibble::tibble(month, revenue=revenue)
+  revenue_month <- revenue_month %>%
+  mutate(total_revenue = revenue/ (1 + month_discount)^(month))%>%
+  mutate(sum_revenue = cumsum(total_revenue))
+return(max(revenue_month$sum_revenue))
+}
+
+cost_cal <- function(cost){
+  for (i in 1:10000/1000){
+    c<- super_cal(i)
+    difference <- abs(c-cost)
+    if (difference <=0.1){print(i)
+      break}  }
+}
+cost_cal(120)
+```
+

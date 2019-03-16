@@ -1,0 +1,342 @@
+
+
+```{r}
+## Loading the data from Dropbox
+s_mobile <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/s_mobile.rds"))
+```
+
+## Question answers
+### Question 1
+```{r}
+library(tidyverse)
+library(radiant)
+adjust_prob = function(p){
+  p_adj = p / (p + (1 - p) * (1 - 0.02) / 0.02)
+  return(p_adj)
+}
+```
+
+```{r}
+## set parameters
+rvar <- "churn"
+evar <- c("changer", "changem", "revenue", "mou", "overage", "roam", 
+    "conference", "months", "uniqsubs", "custcare", "retcalls", 
+    "dropvce", "eqpdays", "refurb", "smartphone", "highcreditr", 
+    "mcycle", "car", "travel", "region", "occupation")
+lev <- "yes"
+
+logit_result = logistic(s_mobile,
+                        rvar = rvar,
+                        evar = evar,
+                        lev = lev,
+                        check = "standardize",
+                        data_filter = "training==1")
+
+summary(logit_result)
+coeff <- write.coeff(logit_result)
+
+```
+
+```{r}
+pred <- predict(logit_result, pred_data = s_mobile)
+s_mobile$p_churn <- pred$Prediction
+s_mobile$p_adj <- sapply(s_mobile$p_churn, adjust_prob)
+
+# Check average churn rate
+churn_base = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_adj))
+churn_base = churn_base$mean
+churn_base
+```
+
+Regarding model selection, we tried nnet and logistic regression and find little improvement. Since model selection is not the most important part, we only employ logistic regression as our result to make all results comformed.
+
+---
+
+### Question 2
+```{r}
+coeff <- coeff %>%
+  filter(p.value < 0.05) %>%
+  arrange(desc(importance)) %>%
+  select(c(label,importance))
+coeff
+```
+We can see a list of drivers of the churn rate descending by their importances.
+
+---
+
+### Question 3
+##### EQP/smartphone
+##### Over
+##### refurb
+
+We can get list of odd ratios sorted by its importance and choose main drivers on which actions to be carried out. From this list, we can see occupation variable is important but as customer characteristics, we don’t have a good way influencing them. We also got regions but their odd ratios are similar to each which means changing them cannot yield more values. Same rules apply to variable “mou” and “month”. Credit rating is another factor that cannot changed by certain actions. After inspecting variables of top importance, we finally have three variables-- “eqpdays”, “overage” and “retcalls”. 
+
+The variable “eqpdays” represents the number of days customer has owned current handset. Since it has the third highest importance among all the variables, thus reducing it can in turn reduce the churn rate. Then “Overage” follows, which means how long the telephone service time the customer uses surpassing his monthly limit. Finally we include “retcalls”, the number of calls by the customers to the retention team, for it is easy to implement an action on it. 
+
+---
+
+### Question 4 (average churn rate)
+#### give phone 
+
+We first think this variable should be a customer characteristic which is not changeable like you can’t decide a person is retired or not. But after more exploration we come to the idea that we can somehow change this variable to manually set a new number. Our approach is to engage a “smartphone” give-out plan to replace customers’ current phones so that the variable “eqpdays” will drop to 0 as they get a new phone.
+
+```{r}
+pred <- predict(logit_result, pred_data = s_mobile, pred_cmd = "eqpdays = 0")
+s_mobile$p_givephone=  sapply(pred$Prediction,adjust_prob)
+# Average churn rate
+churn_givephone = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_givephone))
+churn_givephone = churn_givephone$mean
+churn_givephone
+```
+The result is pretty good. Assuming that everyone will take the offer, every one's "eqpdays" is set to 0 and we get a reduced overall churn rate of 0.0123 compared to a 0.0198 baseline.
+
+
+#### unlimit phone call
+
+This variable is about phone plans. Our idea is, we can’t push customers to call less to keep his monthly telephone service time under the ceiling, but we can alternatively raise the ceiling so that a customer will never break the limit, thus the variable “Overage” comes to 0. In detail, the phone company will not charge a customer for excessive fees despite he actually does. To let the action makes more sense on a business level, we should avoid malicious results that if customers are informed that there are no limits of their plans, they may make meaningless calls can harm the company. To prevent the company from this, we keep the information down that customers will not be charged for their excessive fees so that customers behaviors will be as usual. 
+
+```{r}
+pred <- predict(logit_result, pred_data = s_mobile, pred_cmd = "overage = 0")
+s_mobile$p_unlimit=  sapply(pred$Prediction,adjust_prob)
+# Average churn rate
+churn_unlimt = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_unlimit))
+churn_unlimt = churn_unlimt$mean
+churn_unlimt
+```
+The result also shows a positive progress compared to the original plan regarding overall churn rate by setting every one's "outrage" to 0.
+
+
+
+#### no phone call 
+
+This variable is rather straightforward. We can see from the data that most of the customers actually receive one or no call from retention team. However, it turns out that more calls from retention team will result from a higher churn rate, since calls to retain customers can be annoying to them. Therefore, why not we eliminating this service and dismiss the retention team so that the company can not only reduce churn rate but also save it a large amount of administrative costs.
+```{r}
+pred <- predict(logit_result, pred_data = s_mobile, pred_cmd = "retcalls = 0")
+s_mobile$p_nocall=  sapply(pred$Prediction,adjust_prob)
+# Average churn rate
+churn_nocall = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_nocall))
+churn_nocall = churn_nocall$mean
+churn_nocall
+```
+Fine. It is slightly improved and we should take this action into consideration.
+
+---
+
+### Question 5
+#### give phone filter
+
+ Since people who recently change their phones will not be that interested in this plan, we set a filter and find out people who have a “eqpdays” over 365, which means they own their phone over one year and may be happy to receive a new phone free of charge. In favor of simple calculation, we assume that every one who is qualified for a give-out plan will take the offer. 
+
+```{r}
+s_mobile_filter_givephone = s_mobile%>%mutate(eqpdays =ifelse(eqpdays >=365,0,eqpdays))
+pred <- predict(logit_result, pred_data = s_mobile_filter_givephone)
+s_mobile$p_givephone_ft=  sapply(pred$Prediction,adjust_prob)
+# Average churn rate
+churn_givephone_ft = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_givephone_ft))
+churn_givephone_ft = churn_givephone_ft$mean
+churn_givephone_ft
+```
+The result is surprisingly better, which makes sense.
+
+
+#### unlimit phone call filter
+
+We think this policy can be applied to all customers since the upper limit is floating with each customer's condition and will not influence their behaviors. However, to target more precisely, we take those who spend way more than their plans' limits, taking the median number of overage as a threshold.
+
+midian
+```{r}
+median(s_mobile$overage)
+```
+
+```{r}
+s_mobile_filter_unlimit = s_mobile%>%mutate(overage =ifelse(overage >=40,0,overage))
+pred <- predict(logit_result, pred_data = s_mobile_filter_unlimit)
+s_mobile$p_unlimit_ft=  sapply(pred$Prediction,adjust_prob)
+# Average churn rate
+churn_unlimit_ft = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_unlimit_ft))
+churn_unlimit_ft = churn_unlimit_ft$mean
+churn_unlimit_ft
+```
+The result is  better, which makes sense.
+
+
+
+#### no phone call filter
+
+To get an intuition about how a fitler will do about this strategy, we try to keep the number of "retcalls" that equals to 0 or 1 but reduced the rest of them to 0.
+
+```{r}
+s_mobile_filter_nocall = s_mobile%>%mutate(retcalls =ifelse(retcalls >1,0,retcalls))
+pred <- predict(logit_result, pred_data = s_mobile_filter_nocall)
+s_mobile$p_nocall_ft=  sapply(pred$Prediction,adjust_prob)
+# Average churn rate
+churn_nocall_ft = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(p_nocall_ft))
+churn_nocall_ft = churn_nocall_ft$mean
+churn_nocall_ft
+```
+Looks like we shouldn't keep the calls.
+
+---
+
+### Question 6 (give phone ft, unlimit ft, no call)
+#### CLV function
+```{r}
+rev = s_mobile%>%
+  filter(representative==1)%>%
+  summarise(mean = mean(revenue))
+# set parameters
+rev = rev$mean
+month <-1:60
+discount <- .1
+month_discount<-(1+discount)^(1/12)-1
+## According to research, we find average COG for a mobile carrier company is approximately 70%.
+cogs <- 0.7
+
+clv <- function(rev,churn) {
+  revenue_month <-tibble::tibble(month, revenue=rev,churn=1-churn )
+  revenue_month$churn[1] =1
+  for (i in 2: length(revenue_month$churn)){
+    revenue_month$churn[i]  = revenue_month$churn[i]*revenue_month$churn[i - 1]
+  }
+  revenue_month <- revenue_month %>%
+    mutate(profit = (revenue*churn)*(1-cogs)/ (1 + month_discount)^(month))%>%
+    mutate(sum_profit= cumsum(profit))
+  return(max(revenue_month$sum_profit))
+}
+```
+
+#### CLV base
+```{r}
+clv_base = clv(rev,churn_base)
+clv_base
+```
+
+
+#### CLV give phone ft   ft = filter
+```{r}
+clv_phone = clv(rev,churn_givephone_ft)
+clv_phone
+```
+Good strategy! The company can also employ a loyalty plan or a bundle plan to let customers who get a new phone sta longer, so the overall value generated should be more than this.
+
+
+#### Break even cost for the incentive
+(Which means each filterd people can get a phone equivalent of a value of 164.0478, and definitely the company can customize an appropriate phone type to reduce costs and earn more)
+```{r}
+givephone_people = s_mobile%>%filter(representative==1)%>%filter(eqpdays>=365)%>%summarise(number = n())
+givephone_people = givephone_people$number
+
+# break_even cost, for each filtered people 
+(clv_phone - clv_base)*30000/givephone_people
+```
+
+
+#### CLV unlimit ft
+```{r}
+clv_unlimit = clv(rev, churn_unlimit_ft)
+clv_unlimit
+```
+Another good strategy, and this is more subtle so we can expect a long-term employment of it by a company.
+
+#### Break even cost for the incentive
+
+```{r}
+#optimizer
+cal <- function(revenue){
+  revenue_month <-tibble::tibble(month, revenue=revenue)
+  revenue_month <- revenue_month %>%
+  mutate(total_revenue = revenue/ (1 + month_discount)^(month))%>%
+  mutate(sum_revenue = cumsum(total_revenue))
+return(max(revenue_month$sum_revenue))
+}
+
+break_even <- function(cost){
+  # search monthly cost
+  for (i in 1:10000/1000){
+    c<- cal(i)
+    difference <- abs(c-cost)
+    if (difference <=0.1){
+      return(i)
+      break
+      }  
+    }
+}
+```
+
+
+```{r}
+unlimit_people = s_mobile%>%filter(representative==1)%>%filter(overage>=40)%>%summarise(number = n())
+unlimit_people = unlimit_people$number
+# this is the montly cost for all people 
+bk = break_even(clv_unlimit - clv_base)
+bk
+```
+
+```{r}
+# since we filtered people, this is the montly cost for those 14687 filtered people, and we muliply it by the number of months calculated in clv
+bk*30000/unlimit_people
+```
+
+```{r}
+bk_unlimit_bymonth = bk*30000/unlimit_people
+
+sum(rep(bk_unlimit_bymonth,60) / (1 + month_discount)^(month))
+```
+We calculate a breakeven cost based on monthly dicounted cost. That means if the overall cost of giving unlimited phone time is less than 101.2 SGD, we can well employ this strategy and generate business values.
+
+
+
+#### CLV nocall 
+
+Since we didn't filter anyone in this part, we simply calculate the clvs for every one
+```{r}
+clv_nocall = clv(rev, churn_nocall)
+clv_nocall
+```
+
+#### Break even cost for the incentive
+
+```{r}
+## easy to achieve because we don't need to cost anything, and we even can save lable cost of making phone calls
+break_even(clv_nocall - clv_base) 
+```
+
+```{r}
+bk_nocall_bymonth = break_even(clv_nocall - clv_base) 
+
+sum(rep(bk_nocall_bymonth,60) / (1 + month_discount)^(month))
+```
+This is also a monthly discounted breakeven cost, which seems we can save up to 5.5 SGD from one customer on average over 60 months.
+
+
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
