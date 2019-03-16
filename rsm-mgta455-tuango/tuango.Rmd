@@ -1,0 +1,344 @@
+---
+title: Tuango - RFM Analysis for Mobile App Push Messaging
+output: html_document
+---
+
+* Name:
+* GitLab id:
+* GitLab username:
+
+```{r r_setup, include = FALSE}
+## initial settings
+knitr::opts_chunk$set(
+  comment = NA,
+  echo = TRUE,
+  error = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  dpi = 96,
+  warning = FALSE
+)
+
+## width to use when printing tables etc.
+options(
+  width = 250,
+  scipen = 100,
+  max.print = 5000,
+  stringsAsFactors = FALSE
+)
+
+## make all required libraries available by loading radiant package if needed
+if (!exists("r_environment")) library(radiant)
+```
+
+<style>
+.table {
+  width: auto;
+}
+ul, ol {
+  padding-left: 18px;
+}
+pre, code, pre code {
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  background-color: #ffffff;
+}
+</style>
+
+## Setup
+
+Please complete this R-markdown document by answering the questions in `tuango.pdf` on Dropbox (week4/readings/). The code block below will load the data you will need for this first Rmarkdown file. Create a Notebook/HTML file with all your results and answers and push both the Rmarkdown and Notebook/HTML file to GitLab when you are done. All results MUST be reproducible (i.e., the TA and I must be able to recreate the Notebook/HTML from the R-markdown file without changes or errors).
+
+```{r}
+## loading the data. Note that data must be loaded from Dropbox/MGTA455-2019/data
+library(dplyr)
+tuango <- readr::read_rds(file.path(radiant.data::find_dropbox(), "MGTA455-2019/data/tuango.rds"))
+buyer<- tuango %>%
+  group_by(buyer)%>%
+  summarize(n=n())
+buyer_percentage <-as.numeric(buyer[1,2]/(buyer[2,2]+buyer[1,2]))
+buyer_percentage
+```
+Question 1 0.0298
+
+```{r}
+amount_spent <- tuango %>%
+  filter(buyer == 'yes')
+amount_spent<- mean(amount_spent$ordersize)
+amount_spent
+```
+Question2  202.1288
+```{r}
+tuango <- tuango %>%
+  mutate(rec_iq = radiant.data::xtile(recency, 5))%>%
+  mutate(freq_iq = radiant.data::xtile(frequency,5,rev=TRUE))%>%
+  mutate(mon_iq = radiant.data::xtile(monetary,5,rev=TRUE))
+```
+
+```{r}
+rec1 <- tuango %>%
+  mutate(buyer = as.numeric(buyer))%>%
+  filter(buyer == 1)%>%
+  group_by(rec_iq)%>%
+  summarize(n= sum(buyer))
+plot1 <- tuango%>%
+  group_by(rec_iq)%>%
+  summarize(n2 = n())%>%
+  right_join(rec1,by='rec_iq')%>%
+  mutate(percentage= n/n2)%>%
+  ggplot(aes(rec_iq,percentage))+geom_bar(stat='identity')
+freq1 <- tuango %>%
+  mutate(buyer = as.numeric(buyer))%>%
+  filter(buyer == 1)%>%
+  group_by(freq_iq)%>%
+  summarize(n= sum(buyer))
+plot2 <- tuango%>%
+  group_by(freq_iq)%>%
+  summarize(n2 = n())%>%
+  right_join(freq1,by='freq_iq')%>%
+  mutate(percentage= n/n2)%>%
+  ggplot(aes(freq_iq,percentage))+geom_bar(stat='identity')
+mon1 <- tuango %>%
+  mutate(buyer = as.numeric(buyer))%>%
+  filter(buyer == 1)%>%
+  group_by(mon_iq)%>%
+  summarize(n= sum(buyer))
+plot3 <- tuango%>%
+  group_by(mon_iq)%>%
+  summarize(n2 = n())%>%
+  right_join(mon1,by='mon_iq')%>%
+  mutate(percentage= n/n2)%>%
+  ggplot(aes(mon_iq,percentage))+geom_bar(stat='identity')
+show(plot1)
+show(plot2)
+show(plot3)
+```
+
+```{r}
+rec2 <- tuango %>%
+  mutate(buyer = as.numeric(buyer))%>%
+  filter(buyer == 1)%>%
+  group_by(rec_iq)%>%
+  summarize(ordersize= mean(ordersize))
+rec2 %>%
+  ggplot(aes(rec_iq,ordersize))+geom_bar(stat='identity')
+rec2 %>%
+  ggplot(aes(rec_iq,ordersize-min(ordersize)))+geom_bar(stat='identity')
+freq2 <- tuango %>%
+  mutate(buyer = as.numeric(buyer))%>%
+  filter(buyer == 1)%>%
+  group_by(freq_iq)%>%
+  summarize(ordersize= mean(ordersize))%>%
+  ggplot(aes(freq_iq,ordersize))+geom_bar(stat='identity')
+mon2 <- tuango %>%
+  mutate(buyer = as.numeric(buyer))%>%
+  filter(buyer == 1)%>%
+  group_by(mon_iq)%>%
+  summarize(ordersize= mean(ordersize))%>%
+  ggplot(aes(mon_iq,ordersize))+geom_bar(stat='identity')
+show(freq2)
+show(mon2)
+```
+Question 6 After we quintiles the RFM factors,We find that higher rec level ,frequency level and higher monetary level lead to higher response rate.But for ordersize ,there is no significant tread to prove that rec level, frequency level and monetary will influence ordersize level.
+## Question answers
+```{r}
+tuango <- tuango %>%
+  mutate(rfm_iq = paste0(rec_iq,freq_iq,mon_iq))
+identical(tuango$rfm_iq_pre,tuango$rfm_iq)
+tuango <-tuango %>%
+  mutate(rec_sq = radiant.data::xtile(recency, 5))%>%
+  group_by(rec_sq)%>%
+  mutate(freq_sq= radiant.data::xtile(frequency, 5,rev=TRUE))%>%
+  ungroup()%>%
+  group_by(rec_sq,freq_sq)%>%
+  mutate(mon_sq =radiant.data::xtile(monetary, 5,rev=TRUE))%>%
+  ungroup()%>%
+  mutate(rfm_sq = paste0(rec_sq,freq_sq,mon_sq))
+```
+```{r}
+breakeven_response_rate <- 1.6/(0.5*amount_spent)
+breakeven_response_rate
+```
+Question7 breakeven response rate is 0.0158
+```{r}
+profit <- (mean(tuango$ordersize)*0.5-1.6)*250902
+ROME<- profit/(250902*1.6)
+profit
+ROME
+```
+Quesiton8
+Profit is 354417 and ROME is 88.29% 
+```{r}
+tuango<- tuango%>%
+  mutate(buyer = ifelse(buyer == "yes", 1, 0))
+```
+
+```{r}
+perf_calc <- function(data,column_name){
+  data <- data %>%
+  group_by_at(column_name)%>%
+  mutate(choose_test = mean(buyer)>breakeven_response_rate)%>%
+  ungroup()
+  perc_choose <- mean(data$choose_test)
+  number_choose <- perc_choose *250902
+  dat <-filter(data,choose_test ==TRUE)
+  rep_rate<-mean(dat$buyer== 1)
+  nr_resp <-number_choose*rep_rate
+  cost1<-1.6*number_choose
+  profit1<-amount_spent*0.5*nr_resp-cost1
+  ROME1 <-profit1/cost1
+  return(c(cost1,profit1,ROME1))
+}
+iq<-perf_calc(tuango,'rfm_iq')
+sq<-perf_calc(tuango,'rfm_sq')
+ 
+iq
+sq
+profit_iq <- iq[2]
+ROME_iq <- iq[3]
+profit_sq <-sq[2]
+ROME_sq <- sq[3]
+```
+
+Qusetion9 
+For iq ,profit is 447457.3 and ROME is 1.8844
+For sq ,profit is 451112.5 and ROME is 1.9370
+
+```{r}
+plot_iq<- tuango %>% 
+  group_by(rfm_iq)%>%
+  summarize(n= mean(buyer))%>%
+  ggplot(aes(x=rfm_iq,y=n))+geom_bar(stat='identity')+geom_hline(aes(yintercept=breakeven_response_rate))+ coord_flip()+theme(axis.text.y = element_text(face="bold", color="black", size=5))
+plot_sq<- tuango %>% 
+  group_by(rfm_sq)%>%
+  summarize(n= mean(buyer))%>%
+  ggplot(aes(x=rfm_sq,y=n))+geom_bar(stat='identity')+geom_hline(aes(yintercept=breakeven_response_rate))+ coord_flip()+theme(axis.text.y = element_text(face="bold", color="black", size=5))
+plot(plot_iq)
+plot(plot_sq)
+```
+
+Question10:
+When I compare rfm_iq and rfm_sq, most of the time(63%) they are the same but they are not totally the same.On the tail and head of the whole dataset,which means the most loyal customer and the least loyal customer,iq and sq method have the same result.And in the middle of the data,sq has a better evaluation.
+Rfm_iq and Rfm_sq yield different RFM index for customers because there are different algorithm.Based on the calculation result,sq method has a higher ROME rate which is in accordance with the result professor given in class.If we think logically,sq method will not lead to a higher profit but it will indeed lead to a higher ROME rate.Sq method is an improvement of iq method and we can consider it a three iteration of iq method.It will lead to a more precise result and sometime the target customer will become fewer than iq method but sq method will indeed more accurate.
+
+```{r}
+#question 11
+perf_calc2 <- function(data,column_name){
+  sq_data<- data%>%
+  filter(buyer == 1)%>%
+  group_by_at(column_name)%>%
+  summarize(size = mean(ordersize))
+  sq_data3<- data %>%
+  group_by_at(column_name)%>%
+  summarize(rate=mean(buyer),n=n())%>%
+  right_join(sq_data,by = column_name)%>%
+  mutate(breakeven_response_rate = 1.6/(size*0.5))%>%
+  mutate(choose_test2 = breakeven_response_rate< rate)%>%
+  filter(choose_test2 == TRUE)
+  data <- data %>%
+  mutate(choose_test3 = data[[column_name]]   %in% sq_data3[[column_name]]  )
+  perc_choose_sq3 <- mean(data$choose_test3)
+  number_choose_sq3 <- perc_choose_sq3 *250902
+  dat_sq3 <- filter(data,choose_test3==TRUE)
+  rep_rate_sq3<-mean(dat_sq3$buyer== 1)
+  nr_resp_sq3 <-number_choose_sq3*rep_rate_sq3
+  cost_sq3<-1.6*number_choose_sq3
+  profit_sq3<-amount_spent*0.5*nr_resp_sq3-cost_sq3
+  ROME_sq3 <-profit_sq3/cost_sq3
+  return(c(profit_sq3,ROME_sq3))
+}
+
+c<-perf_calc2(tuango,'rfm_sq')
+c
+profit_sq3 <-c[1]
+ROME_sq3 <- c[2]
+
+```
+Question11 profit is 449380 and ROME is 1.9766
+
+```{r}
+perf_calc3 <- function(data,column_name){
+  sq_data<- data%>%
+  filter(buyer == 1)%>%
+  group_by_at(column_name)%>%
+  summarize(size = mean(ordersize))
+  sq_data3<- data %>%
+  group_by_at(column_name)%>%
+  summarize(rate=mean(buyer)-1.64*seprop(buyer),n=n())%>%
+  right_join(sq_data,by = column_name)%>%
+  mutate(breakeven_response_rate = 1.6/(size*0.5))%>%
+  mutate(choose_test2 = breakeven_response_rate< rate)%>%
+  filter(choose_test2 == TRUE)
+  data <- data %>%
+  mutate(choose_test3 = data[[column_name]]   %in% sq_data3[[column_name]]  )
+  perc_choose_sq3 <- mean(data$choose_test3)
+  number_choose_sq3 <- perc_choose_sq3 *250902
+  dat_sq3 <- filter(data,choose_test3==TRUE)
+  rep_rate_sq3<-mean(dat_sq3$buyer== 1)
+  nr_resp_sq3 <-number_choose_sq3*rep_rate_sq3
+  cost_sq3<-1.6*number_choose_sq3
+  profit_sq3<-amount_spent*0.5*nr_resp_sq3-cost_sq3
+  ROME_sq3 <-profit_sq3/cost_sq3
+  return(c(profit_sq3,ROME_sq3))
+}
+d<- perf_calc3(tuango,'rfm_iq')
+e<-perf_calc3(tuango,'rfm_sq')
+d
+e
+profit_iq2<-d[1]
+ROME_iq2<-d[2]
+profit_sq2<-e[1]
+ROME_sq2<-e[2]
+```
+
+Question12
+Profit of iq is 366891.49386 ROME of iq is 3.185
+Profit of sq is 403526.238628 ROME of sq is 3.011
+
+Method 12 has the best ROME rate which means it is more effective.When we try to solve the standard error, when improve the ROME rate sufficiently.Even though the profit become less ,the cost we need to pay is much smaller.
+
+
+
+```{r}
+library(dplyr)
+bar_profit <- data.frame(name=c('iq_9','sq_9','sq_11','iq_12','sq_12'),profit=c(profit_iq,profit_sq,profit_sq3,profit_iq2,profit_sq2)) %>%
+  ggplot(aes(x=name,y=profit))+geom_bar(stat = 'identity')+coord_cartesian(ylim=c(300000,500000))
+bar_ROME <- data.frame(name=c('iq_9','sq_9','sq_11','iq_12','sq_12'),ROME=c(ROME_iq,ROME_sq,ROME_sq3,ROME_iq2,ROME_sq2)) %>%
+  ggplot(aes(x=name,y=ROME))+geom_bar(stat = 'identity')+coord_cartesian(ylim=c(1.5,3.5))
+bar_profit
+bar_ROME  
+```
+
+
+
+```{r}
+#useless
+perf_calc5 <- function(data,column_name){
+data_new<- data%>%
+  filter(buyer == 1)%>%
+  group_by_at(column_name)%>%
+  summarize(size = mean(ordersize))
+data_new2<- data %>%
+  group_by_at(column_name)%>%
+  summarize(rate=mean(buyer),n=n())%>%
+  right_join(data_new,by = column_name)%>%
+  mutate(choose = 1.6/(size*0.5)<rate)%>%
+  filter(choose == TRUE)
+data <- data %>%
+  mutate(choose_test3 = data[[column_name]]   %in% data_new2[[column_name]]  )
+  perc_choose_sq3 <- mean(data$choose_test3)
+  number_choose_sq3 <- perc_choose_sq3 *250902
+  dat_sq3 <- filter(data,choose_test3==TRUE)
+  rep_rate_sq3<-mean(dat_sq3$buyer== 1)
+  nr_resp_sq3 <-number_choose_sq3*rep_rate_sq3
+  cost_sq3<-1.6*number_choose_sq3
+  profit_sq3<-amount_spent*0.5*nr_resp_sq3-cost_sq3
+  ROME_sq3 <-profit_sq3/cost_sq3
+  return(c(profit_sq3,ROME_sq3))
+}
+
+
+
+```
+
